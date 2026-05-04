@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OSLTT Web Controller</title>
+  <link rel="stylesheet" href="styles.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>OSLTT <span class="badge">v3.0</span></h1>
+      <div id="connectionStatus" class="status disconnected">Disconnected</div>
+    </header>
+
+    <main>
+      <!-- Connection Panel -->
+      <section class="panel" id="connectPanel">
+        <h2>Device</h2>
+        <div class="row">
+          <button id="connectBtn" class="btn btn-primary">Connect Device</button>
+          <button id="disconnectBtn" class="btn btn-danger" disabled>Disconnect</button>
+        </div>
+        <div class="info" id="deviceInfo"></div>
+      </section>
+
+      <!-- Settings Panel -->
+      <section class="panel" id="settingsPanel">
+        <h2>Settings</h2>
+        <div class="grid">
+          <div class="field">
+            <label for="shots">Shots</label>
+            <input id="shots" type="number" min="1" max="990" value="100"/>
+          </div>
+          <div class="field">
+            <label for="delayMs">Delay (ms)</label>
+            <input id="delayMs" type="number" min="50" max="5000" value="100"/>
+          </div>
+          <div class="field">
+            <label for="movePx">Mouse Move (px)</label>
+            <input id="movePx" type="number" min="-127" max="127" value="100"/>
+          </div>
+          <div class="field">
+            <label for="windowMs">Window (ms)</label>
+            <input id="windowMs" type="number" min="10" max="120" value="40"/>
+          </div>
+          <div class="field">
+            <label for="threshold">Threshold</label>
+            <input id="threshold" type="number" min="0" max="4095" value="0" title="0 = auto"/>
+          </div>
+          <div class="field">
+            <label for="intervalUs">Sample Interval (us)</label>
+            <input id="intervalUs" type="number" min="5" max="100" value="20" step="1"/>
+          </div>
+        </div>
+        <div class="row">
+          <button id="saveSettingsBtn" class="btn btn-secondary">Save Settings</button>
+        </div>
+      </section>
+
+      <!-- Live View -->
+      <section class="panel" id="livePanel">
+        <h2>Live Signal</h2>
+        <div class="chart-wrap">
+          <canvas id="liveChart"></canvas>
+        </div>
+        <div class="row center">
+          <button id="armBtn" class="btn btn-primary" disabled>Arm Single Shot</button>
+          <button id="runTestBtn" class="btn btn-accent" disabled>Arm Full Test</button>
+          <button id="abortBtn" class="btn btn-danger" disabled>Abort</button>
+        </div>
+        <div id="progressArea" class="info"></div>
+      </section>
+
+      <!-- Results -->
+      <section class="panel" id="resultsPanel">
+        <h2>Results</h2>
+        <div id="stats" class="stats"></div>
+        <div class="chart-wrap">
+          <canvas id="resultsChart"></canvas>
+        </div>
+        <div class="row">
+          <button id="saveRunBtn" class="btn btn-accent" disabled>Save Run...</button>
+          <button id="exportCsvBtn" class="btn btn-secondary" disabled>Export CSV</button>
+          <button id="exportRawBtn" class="btn btn-secondary" disabled>Export Raw Data</button>
+          <button id="clearResultsBtn" class="btn btn-danger">Clear</button>
+        </div>
+      </section>
+
+      <!-- Compare -->
+      <section class="panel" id="comparePanel">
+        <h2>Compare Runs</h2>
+        <div id="savedRunsList" class="runs-list"></div>
+        <div class="chart-wrap" id="compareChartWrap">
+          <canvas id="compareChart"></canvas>
+        </div>
+        <div class="row">
+          <button id="compareSelectedBtn" class="btn btn-primary" disabled>Compare Selected</button>
+          <button id="clearComparedBtn" class="btn btn-danger">Clear All Saved</button>
+        </div>
+        <div id="compareStats" class="compare-table-wrap"></div>
+      </section>
+    </main>
+
+    <footer>
+      <p>OSLTT Open Source Latency Tool &middot; <a href="https://github.com/OSRTT/OSLTT" target="_blank">GitHub</a></p>
+    </footer>
+  </div>
+
+  <script src="app.js?v=3"></script>
+</body>
+</html>

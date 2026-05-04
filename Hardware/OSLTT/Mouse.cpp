@@ -1,0 +1,86 @@
+#include "Mouse.h"
+
+#if defined(USBCON)
+
+static const uint8_t _hidReportDescriptor[] PROGMEM = {
+  // Mouse
+  0x05, 0x01,                    // USAGE_PAGE (Generic Desktop)
+  0x09, 0x02,                    // USAGE (Mouse)
+  0xa1, 0x01,                    // COLLECTION (Application)
+  0x09, 0x01,                    //   USAGE (Pointer)
+  0xa1, 0x00,                    //   COLLECTION (Physical)
+  0x85, 0x01,                    //     REPORT_ID (1)
+  0x05, 0x09,                    //     USAGE_PAGE (Button)
+  0x19, 0x01,                    //     USAGE_MINIMUM (Button 1)
+  0x29, 0x03,                    //     USAGE_MAXIMUM (Button 3)
+  0x15, 0x00,                    //     LOGICAL_MINIMUM (0)
+  0x25, 0x01,                    //     LOGICAL_MAXIMUM (1)
+  0x95, 0x03,                    //     REPORT_COUNT (3)
+  0x75, 0x01,                    //     REPORT_SIZE (1)
+  0x81, 0x02,                    //     INPUT (Data,Var,Abs)
+  0x95, 0x01,                    //     REPORT_COUNT (1)
+  0x75, 0x05,                    //     REPORT_SIZE (5)
+  0x81, 0x03,                    //     INPUT (Cnst,Var,Abs)
+  0x05, 0x01,                    //     USAGE_PAGE (Generic Desktop)
+  0x09, 0x30,                    //     USAGE (X)
+  0x09, 0x31,                    //     USAGE (Y)
+  0x09, 0x38,                    //     USAGE (Wheel)
+  0x15, 0x81,                    //     LOGICAL_MINIMUM (-127)
+  0x25, 0x7f,                    //     LOGICAL_MAXIMUM (127)
+  0x75, 0x08,                    //     REPORT_SIZE (8)
+  0x95, 0x03,                    //     REPORT_COUNT (3)
+  0x81, 0x06,                    //     INPUT (Data,Var,Rel)
+  0xc0,                          //   END_COLLECTION
+  0xc0                           // END_COLLECTION
+};
+
+Mouse_::Mouse_(void) : _buttons(0) {
+  static HIDSubDescriptor node(_hidReportDescriptor, sizeof(_hidReportDescriptor));
+  HID().AppendDescriptor(&node);
+}
+
+void Mouse_::begin(void) {}
+void Mouse_::end(void) {}
+
+void Mouse_::click(uint8_t b) {
+  _buttons = b;
+  sendReport();
+  _buttons = 0;
+  sendReport();
+}
+
+void Mouse_::move(signed char x, signed char y, signed char wheel) {
+  uint8_t report[4];
+  report[0] = _buttons;
+  report[1] = x;
+  report[2] = y;
+  report[3] = wheel;
+  HID().SendReport(1, report, sizeof(report));
+}
+
+void Mouse_::press(uint8_t b) {
+  _buttons |= b;
+  sendReport();
+}
+
+void Mouse_::release(uint8_t b) {
+  _buttons &= ~b;
+  sendReport();
+}
+
+bool Mouse_::isPressed(uint8_t b) {
+  return (_buttons & b) != 0;
+}
+
+void Mouse_::sendReport(void) {
+  uint8_t report[4];
+  report[0] = _buttons;
+  report[1] = 0;
+  report[2] = 0;
+  report[3] = 0;
+  HID().SendReport(1, report, sizeof(report));
+}
+
+Mouse_ Mouse;
+
+#endif
