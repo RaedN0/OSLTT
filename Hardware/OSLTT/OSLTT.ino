@@ -12,6 +12,7 @@
 
 #include "Mouse.h"
 #include "clangd_arduino_stubs.h"
+#include <cstdint>
 
 /* ========== BOARD COMPATIBILITY ========== */
 #if defined(ARDUINO_SEEED_XIAO_M0)
@@ -149,20 +150,19 @@ static void runSingleShot(uint16_t shotNum,
                           uint16_t lowerBound, uint16_t upperBound) {
   running = true;
   abortRequested = false;
-  
+
   uint16_t maxSamples = (uint16_t)(((uint32_t)cfgWindowMs * 1000UL) / cfgSampleIntervalUs);
   if (maxSamples > MAX_MAX_SAMPLES) maxSamples = MAX_MAX_SAMPLES;
-  
+
   /* --- 3. Mouse move + precise sampling --- */
-  uint32_t nextTime = micros();
   Mouse.move(cfgMoveDistance, 0, 0);
 
+  uint32_t startTime = micros();
   for (uint16_t i = 0; i < maxSamples; i++) {
-    nextTime += cfgSampleIntervalUs;
-    while (micros() < nextTime);
-
     adcBuffer[i] = fastAnalogRead();
+    delayMicroseconds(cfgSampleIntervalUs);
   }
+  uint32_t duration = micros() - startTime;
 
   /* --- 4. Reset mouse position --- */
   delay(MOUSE_RESET_DELAY);
@@ -186,7 +186,7 @@ static void runSingleShot(uint16_t shotNum,
 
   /* --- 6. Stream result --- */
   if (latencyIndex != 0xFFFF) {
-    uint32_t latencyUs = (uint32_t)(latencyIndex + 1) * cfgSampleIntervalUs;
+    uint32_t latencyUs = (uint32_t)(latencyIndex + 1) * duration / maxSamples;
     sendResultHeader(latencyUs, latencyIndex, maxSamples, cfgSampleIntervalUs,
                      baseline, actualThreshold);
     sendSamples(maxSamples);
