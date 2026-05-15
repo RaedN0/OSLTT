@@ -123,7 +123,6 @@ function saveRun() {
       movePx: parseInt($('movePx').value, 10),
       windowMs: parseInt($('windowMs').value, 10),
       threshold: parseInt($('threshold').value, 10),
-      intervalUs: parseInt($('intervalUs').value, 10)
     },
     stats: { avg, min, max, sd }
   };
@@ -260,10 +259,6 @@ function renderCompareTable() {
     return compareTableSort.dir === 1 ? ' ▲' : ' ▼';
   };
 
-  let minAll = Infinity, maxAll = -Infinity;
-  rows.forEach(r => { minAll = Math.min(minAll, r.stats.min); maxAll = Math.max(maxAll, r.stats.max); });
-  const range = maxAll - minAll || 1;
-
   const html = `
     <table class="compare-table">
       <thead>
@@ -278,19 +273,17 @@ function renderCompareTable() {
       </thead>
       <tbody>
         ${rows.map(r => {
-          const best = r.stats.min === minAll;
           return `
-          <tr class="${best ? 'row-best' : ''}">
+          <tr>
             <td style="text-align:left">
               <div class="name-cell">
                 <span class="row-bar" style="background:${r._color}"></span>
                 ${escapeHtml(r.name)}
-                ${best ? '<span class="best-star" title="Lowest minimum latency">★</span>' : ''}
               </div>
             </td>
             <td class="num">${r.latencies.length}</td>
             <td class="num">${r.stats.avg.toFixed(3)} ms</td>
-            <td class="num ${best ? 'best-cell' : ''}">${r.stats.min.toFixed(3)} ms</td>
+            <td class="num">${r.stats.min.toFixed(3)} ms</td>
             <td class="num">${r.stats.max.toFixed(3)} ms</td>
             <td class="num">${r.stats.sd.toFixed(3)} ms</td>
           </tr>
@@ -471,14 +464,13 @@ function handleLine(line) {
 
   if (line.startsWith('R,')) {
     const parts = line.split(',');
-    if (parts.length >= 7) {
+    if (parts.length >= 6) {
       currentSamples = {
         latencyUs: parseInt(parts[1]),
         latencyIndex: parseInt(parts[2]),
-        intervalUs: parseInt(parts[3]),
-        numSamples: parseInt(parts[4]),
-        baseline: parseInt(parts[5]),
-        threshold: parseInt(parts[6]),
+        numSamples: parseInt(parts[3]),
+        baseline: parseInt(parts[4]),
+        threshold: parseInt(parts[5]),
         samples: []
       };
     }
@@ -497,7 +489,7 @@ let currentSamples = null;
 
 function recordShot(data) {
   const latencyMs = data.latencyUs / 1000;
-  const latencyIndex = data.latencyIndex ?? Math.round(data.latencyUs / data.intervalUs);
+  const latencyIndex = data.latencyIndex;
   rawResults.push(data);
   updateStats();
   plotLive(data.samples, data.baseline, data.threshold, latencyIndex);
@@ -623,8 +615,7 @@ async function saveSettings() {
   const move   = parseInt($('movePx').value, 10) || 20;
   const win    = parseInt($('windowMs').value, 10) || 80;
   const thr    = parseInt($('threshold').value, 10) || 0;
-  const intv   = parseInt($('intervalUs').value, 10) || 10;
-  const cmd = `C,${shots},${delay},${move},${thr},${win},${intv}`;
+  const cmd = `C,${shots},${delay},${move},${thr},${win}`;
   $('deviceInfo').textContent = 'Saving settings...';
   await send(cmd);
 }
@@ -667,9 +658,9 @@ function download(filename, text) {
 
 function exportCsv() {
   if (!rawResults.length) return;
-  const lines = ['Shot,LatencyUs,LatencyMs,Baseline,Threshold,IntervalUs,NumSamples'];
+  const lines = ['Shot,LatencyUs,LatencyMs,Baseline,Threshold,NumSamples'];
   rawResults.forEach((r, i) => {
-    lines.push(`${i+1},${r.latencyUs},${(r.latencyUs/1000).toFixed(4)},${r.baseline},${r.threshold},${r.intervalUs},${r.numSamples}`);
+    lines.push(`${i+1},${r.latencyUs},${(r.latencyUs/1000).toFixed(4)},${r.baseline},${r.threshold},${r.numSamples}`);
   });
   const avg = rawResults.reduce((s, r) => s + r.latencyUs, 0) / rawResults.length;
   const latencies = rawResults.map(r => r.latencyUs / 1000);

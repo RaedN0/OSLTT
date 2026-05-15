@@ -136,11 +136,8 @@ footer a:hover { text-decoration: underline; }
 .compare-table tbody td:first-child { text-align: left; }
 .compare-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.03); }
 .compare-table tbody tr:hover { background: rgba(88,166,255,0.08); }
-.compare-table tbody tr.row-best { background: rgba(63,185,80,0.08) !important; }
-.compare-table tbody tr.row-best:hover { background: rgba(63,185,80,0.14) !important; }
-.compare-table tbody tr.row-best td { border-color: #3fb95044; }
+
 .compare-table .row-bar { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 8px; flex-shrink: 0; }
 .compare-table .name-cell { display: flex; align-items: center; gap: 2px; font-weight: 600; }
 .compare-table .num { font-variant-numeric: tabular-nums; }
-.compare-table .best-cell { color: #3fb950; font-weight: 700; }
-.compare-table .best-star { color: #3fb950; font-size: 0.85em; margin-left: 6px; }
+

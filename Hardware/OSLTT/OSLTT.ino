@@ -11,8 +11,6 @@
 */
 
 #include "Mouse.h"
-#include "clangd_arduino_stubs.h"
-#include <cstdint>
 
 /* ========== BOARD COMPATIBILITY ========== */
 #if defined(ARDUINO_SEEED_XIAO_M0)
@@ -32,15 +30,14 @@ const int OSLTT_PIN_LIGHT    = A0;  // Photodiode / light sensor (PA02 = AIN0 on
 #define FW_VERSION           "3.0"
 #define CMD_BUFFER_SIZE      64
 #define MAX_MAX_SAMPLES      12000    // Hard ceiling
-#define DEFAULT_INTERVAL_US  20       // 20us = 50ksps. Reduced from 10us to avoid USB HID noise
 #define DEFAULT_WINDOW_MS    40       // 40ms max sampling window (480Hz OLED optimized)
 #define DEFAULT_SHOT_DELAY   100      // ms between shots
 #define DEFAULT_SHOTS        100
 #define DEFAULT_MOVE         100      // pixels
 #define DEFAULT_THRESHOLD    0        // 0 = auto
-#define BASELINE_SAMPLES     20       // Samples to establish baseline
-#define CONSECUTIVE_OUT_OF_BOUNDS 5    // Consecutive out-of-bounds samples to confirm detection
-#define MOUSE_RESET_DELAY    50       // ms to wait before moving mouse back
+#define BASELINE_SAMPLES     400       // Samples to establish baseline
+#define CONSECUTIVE_OUT_OF_BOUNDS 20    // Consecutive out-of-bounds samples to confirm detection
+#define MOUSE_RESET_DELAY    10       // ms to wait before moving mouse back
 
 /* ========== STATE ========== */
 uint16_t adcBuffer[MAX_MAX_SAMPLES];
@@ -54,7 +51,6 @@ uint16_t cfgDelayMs           = DEFAULT_SHOT_DELAY;
 int8_t   cfgMoveDistance      = DEFAULT_MOVE;
 uint16_t cfgThreshold         = DEFAULT_THRESHOLD;
 uint16_t cfgWindowMs          = DEFAULT_WINDOW_MS;
-uint16_t cfgSampleIntervalUs  = DEFAULT_INTERVAL_US;
 
 char     cmdBuffer[CMD_BUFFER_SIZE];
 uint8_t  cmdIndex = 0;
@@ -70,9 +66,9 @@ static inline void initFastADC() {
   while (ADC->CTRLA.bit.SWRST || ADC->STATUS.bit.SYNCBUSY);
   ADC->REFCTRL.reg = ADC_REFCTRL_REFSEL_INTVCC1;
   ADC->AVGCTRL.reg = ADC_AVGCTRL_SAMPLENUM_1;
-  ADC->SAMPCTRL.reg = ADC_SAMPCTRL_SAMPLEN(0);
+  ADC->SAMPCTRL.reg = ADC_SAMPCTRL_SAMPLEN(1);
   ADC->CTRLB.reg = ADC_CTRLB_RESSEL_12BIT |
-                   ADC_CTRLB_PRESCALER_DIV4;
+                   ADC_CTRLB_PRESCALER_DIV32;
   ADC->INPUTCTRL.reg = ADC_INPUTCTRL_MUXNEG_GND |
                        ADC_INPUTCTRL_MUXPOS_PIN0;
   ADC->CTRLA.reg = ADC_CTRLA_ENABLE;
@@ -101,14 +97,12 @@ static void blinkLED(int times, int msOn, int msOff) {
 
 /* ========== SERIAL HELPERS ========== */
 static void sendResultHeader(uint32_t latencyUs, uint16_t latencyIndex,
-                             uint16_t numSamples, uint16_t sampleIntervalUs,
+                             uint16_t numSamples,
                              uint16_t baseline, uint16_t actualThreshold) {
   Serial.print("R,");
   Serial.print(latencyUs);
   Serial.print(',');
   Serial.print(latencyIndex);
-  Serial.print(',');
-  Serial.print(sampleIntervalUs);
   Serial.print(',');
   Serial.print(numSamples);
   Serial.print(',');
@@ -127,11 +121,11 @@ static void sendSamples(uint16_t count) {
 
 /* ========== CORE SAMPLING ROUTINE ========== */
 static void computeBaseline(uint16_t &baseline, uint16_t &actualThreshold,
-                            uint16_t &lowerBound, uint16_t &upperBound) {
+                            uint16_t &lowerBound, uint16_t &upperBound,
+                            uint16_t *adcBuffer) {
   uint32_t baselineSum = 0;
   for (int i = 0; i < BASELINE_SAMPLES; i++) {
-    baselineSum += fastAnalogRead();
-    delayMicroseconds(cfgSampleIntervalUs);
+    baselineSum += adcBuffer[i];
   }
   baseline = (uint16_t)(baselineSum / BASELINE_SAMPLES);
 
@@ -145,28 +139,27 @@ static void computeBaseline(uint16_t &baseline, uint16_t &actualThreshold,
   upperBound = (sumThresh < 4095) ? sumThresh : (uint16_t)4095;
 }
 
-static void runSingleShot(uint16_t shotNum,
-                          uint16_t baseline, uint16_t actualThreshold,
-                          uint16_t lowerBound, uint16_t upperBound) {
+static void runSingleShot(uint16_t shotNum) {
   running = true;
   abortRequested = false;
 
-  uint16_t maxSamples = (uint16_t)(((uint32_t)cfgWindowMs * 1000UL) / cfgSampleIntervalUs);
+  uint16_t maxSamples = (uint16_t)(((uint32_t)cfgWindowMs * 1000UL) / 6);
   if (maxSamples > MAX_MAX_SAMPLES) maxSamples = MAX_MAX_SAMPLES;
-
+  
   /* --- 3. Mouse move + precise sampling --- */
   Mouse.move(cfgMoveDistance, 0, 0);
 
   uint32_t startTime = micros();
   for (uint16_t i = 0; i < maxSamples; i++) {
     adcBuffer[i] = fastAnalogRead();
-    delayMicroseconds(cfgSampleIntervalUs);
   }
   uint32_t duration = micros() - startTime;
 
-  /* --- 4. Reset mouse position --- */
-  delay(MOUSE_RESET_DELAY);
-  Mouse.move(-cfgMoveDistance, 0, 0);
+  cfgMoveDistance *= -1;
+  
+  /* Compute baseline + auto-threshold once for the entire test */
+  uint16_t baseline, actualThreshold, lowerBound, upperBound;
+  computeBaseline(baseline, actualThreshold, lowerBound, upperBound, adcBuffer);
 
   /* --- 5. Find threshold crossing (require consecutive samples to ignore outliers) --- */
   uint16_t latencyIndex = 0xFFFF;
@@ -187,8 +180,7 @@ static void runSingleShot(uint16_t shotNum,
   /* --- 6. Stream result --- */
   if (latencyIndex != 0xFFFF) {
     uint32_t latencyUs = (uint32_t)(latencyIndex + 1) * duration / maxSamples;
-    sendResultHeader(latencyUs, latencyIndex, maxSamples, cfgSampleIntervalUs,
-                     baseline, actualThreshold);
+    sendResultHeader(latencyUs, latencyIndex, maxSamples, baseline, actualThreshold);
     sendSamples(maxSamples);
   } else {
     Serial.println("TIMEOUT");
@@ -202,14 +194,11 @@ static void runFullTest() {
   if (running) { Serial.println("ERR:busy"); return; }
   abortRequested = false;
 
-  /* Compute baseline + auto-threshold once for the entire test */
-  uint16_t baseline, actualThreshold, lowerBound, upperBound;
-  computeBaseline(baseline, actualThreshold, lowerBound, upperBound);
 
   Serial.println("START");
   for (uint16_t s = 0; s < cfgShots; s++) {
     if (abortRequested) break;
-    runSingleShot(s + 1, baseline, actualThreshold, lowerBound, upperBound);
+    runSingleShot(s + 1);
     if (s + 1 < cfgShots && !abortRequested) {
       delay(cfgDelayMs);
     }
@@ -262,11 +251,10 @@ static void handleConfig() {
   if (hasMove) cfgMoveDistance = movePx;
   cfgThreshold        = vals[3];
   cfgWindowMs         = vals[4] ? vals[4] : DEFAULT_WINDOW_MS;
-  if (argIdx >= 6 && vals[5] >= 5 && vals[5] <= 100) cfgSampleIntervalUs = vals[5];
 
-  uint16_t maxSamp = (uint16_t)(((uint32_t)cfgWindowMs * 1000UL) / cfgSampleIntervalUs);
+  uint16_t maxSamp = (uint16_t)(((uint32_t)cfgWindowMs * 1000UL) / 6);
   if (maxSamp > MAX_MAX_SAMPLES) {
-    cfgWindowMs = (uint16_t)((uint32_t)MAX_MAX_SAMPLES * cfgSampleIntervalUs / 1000UL);
+    cfgWindowMs = (uint16_t)((uint32_t)MAX_MAX_SAMPLES * 6 / 1000UL);
   }
 
   Serial.println("OK");
@@ -289,9 +277,7 @@ static void processCommand() {
     case 'S': {
       abortRequested = false;
       if (!running) {
-        uint16_t baseline, actualThreshold, lowerBound, upperBound;
-        computeBaseline(baseline, actualThreshold, lowerBound, upperBound);
-        runSingleShot(0, baseline, actualThreshold, lowerBound, upperBound);
+        runSingleShot(0);
       }
       else Serial.println("ERR:busy");
       break;
@@ -382,9 +368,7 @@ void loop() {
           armed = false;
           runFullTest();
         } else {
-          uint16_t baseline, actualThreshold, lowerBound, upperBound;
-          computeBaseline(baseline, actualThreshold, lowerBound, upperBound);
-          runSingleShot(0, baseline, actualThreshold, lowerBound, upperBound);
+          runSingleShot(0);
         }
       }
       btnState = 2;
