@@ -108,10 +108,7 @@ function saveRun() {
   const name = prompt('Save run as:', `Run ${new Date().toLocaleString()}`);
   if (!name) return;
   const latencies = rawResults.map(r => r.latencyUs / 1000);
-  const avg = latencies.reduce((a, b) => a + b, 0) / latencies.length;
-  const min = Math.min(...latencies);
-  const max = Math.max(...latencies);
-  const sd = Math.sqrt(latencies.reduce((s, v) => s + (v - avg) ** 2, 0) / latencies.length);
+  const stats = computeStats(latencies);
   const run = {
     id: Date.now(),
     name,
@@ -124,7 +121,7 @@ function saveRun() {
       windowMs: parseInt($('windowMs').value, 10),
       threshold: parseInt($('threshold').value, 10),
     },
-    stats: { avg, min, max, sd }
+    stats
   };
   savedRuns.push(run);
   saveRunsToStorage();
@@ -237,17 +234,29 @@ function compareSelected() {
 
 function renderCompareTable() {
   if (compareTableRuns.length < 2) return;
-  const rows = [...compareTableRuns];
+
+  // Resolve stats for each run (handles legacy runs missing new stats)
+  const rows = compareTableRuns.map(r => {
+    const s = r.median !== undefined ? r.stats : computeStats(r.latencies);
+    return { ...r, stats: s };
+  });
+
+  const sorted = [...rows];
   if (compareTableSort.key) {
-    rows.sort((a, b) => {
+    sorted.sort((a, b) => {
       let va, vb;
       switch (compareTableSort.key) {
         case 'name': va = a.name.toLowerCase(); vb = b.name.toLowerCase(); break;
         case 'shots': va = a.latencies.length; vb = b.latencies.length; break;
         case 'avg': va = a.stats.avg; vb = b.stats.avg; break;
+        case 'median': va = a.stats.median; vb = b.stats.median; break;
         case 'min': va = a.stats.min; vb = b.stats.min; break;
         case 'max': va = a.stats.max; vb = b.stats.max; break;
+        case 'range': va = a.stats.range; vb = b.stats.range; break;
         case 'sd': va = a.stats.sd; vb = b.stats.sd; break;
+        case 'p90': va = a.stats.p90; vb = b.stats.p90; break;
+        case 'p95': va = a.stats.p95; vb = b.stats.p95; break;
+        case 'p99': va = a.stats.p99; vb = b.stats.p99; break;
         default: return 0;
       }
       return (va > vb ? 1 : va < vb ? -1 : 0) * compareTableSort.dir;
@@ -266,13 +275,19 @@ function renderCompareTable() {
           <th onclick="sortCompareTable('name')" style="text-align:left">Run<span class="sort-indicator">${getInd('name')}</span></th>
           <th onclick="sortCompareTable('shots')">Shots<span class="sort-indicator">${getInd('shots')}</span></th>
           <th onclick="sortCompareTable('avg')">Avg<span class="sort-indicator">${getInd('avg')}</span></th>
+          <th onclick="sortCompareTable('median')">Median<span class="sort-indicator">${getInd('median')}</span></th>
           <th onclick="sortCompareTable('min')">Min<span class="sort-indicator">${getInd('min')}</span></th>
           <th onclick="sortCompareTable('max')">Max<span class="sort-indicator">${getInd('max')}</span></th>
+          <th onclick="sortCompareTable('range')">Range<span class="sort-indicator">${getInd('range')}</span></th>
           <th onclick="sortCompareTable('sd')">Std Dev<span class="sort-indicator">${getInd('sd')}</span></th>
+          <th onclick="sortCompareTable('p90')">p90<span class="sort-indicator">${getInd('p90')}</span></th>
+          <th onclick="sortCompareTable('p95')">p95<span class="sort-indicator">${getInd('p95')}</span></th>
+          <th onclick="sortCompareTable('p99')">p99<span class="sort-indicator">${getInd('p99')}</span></th>
         </tr>
       </thead>
       <tbody>
-        ${rows.map(r => {
+        ${sorted.map(r => {
+          const s = r.stats;
           return `
           <tr>
             <td style="text-align:left">
@@ -282,10 +297,15 @@ function renderCompareTable() {
               </div>
             </td>
             <td class="num">${r.latencies.length}</td>
-            <td class="num">${r.stats.avg.toFixed(3)} ms</td>
-            <td class="num">${r.stats.min.toFixed(3)} ms</td>
-            <td class="num">${r.stats.max.toFixed(3)} ms</td>
-            <td class="num">${r.stats.sd.toFixed(3)} ms</td>
+            <td class="num">${s.avg.toFixed(3)} ms</td>
+            <td class="num">${s.median.toFixed(3)} ms</td>
+            <td class="num">${s.min.toFixed(3)} ms</td>
+            <td class="num">${s.max.toFixed(3)} ms</td>
+            <td class="num">${s.range.toFixed(3)} ms</td>
+            <td class="num">${s.sd.toFixed(3)} ms</td>
+            <td class="num">${s.p90.toFixed(3)} ms</td>
+            <td class="num">${s.p95.toFixed(3)} ms</td>
+            <td class="num">${s.p99.toFixed(3)} ms</td>
           </tr>
           `;
         }).join('')}
@@ -499,6 +519,31 @@ function recordShot(data) {
   }
 }
 
+/* ===== STATISTICS HELPERS ===== */
+function percentile(sortedArr, p) {
+  if (!sortedArr.length) return 0;
+  const idx = (p / 100) * (sortedArr.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sortedArr[lo];
+  return sortedArr[lo] + (sortedArr[hi] - sortedArr[lo]) * (idx - lo);
+}
+
+function computeStats(latencies) {
+  const n = latencies.length;
+  const avg = latencies.reduce((a, b) => a + b, 0) / n;
+  const min = Math.min(...latencies);
+  const max = Math.max(...latencies);
+  const sd = Math.sqrt(latencies.reduce((s, v) => s + (v - avg) ** 2, 0) / n);
+  const sorted = [...latencies].sort((a, b) => a - b);
+  const median = percentile(sorted, 50);
+  const p90 = percentile(sorted, 90);
+  const p95 = percentile(sorted, 95);
+  const p99 = percentile(sorted, 99);
+  const range = max - min;
+  return { count: n, avg, min, max, sd, median, p90, p95, p99, range };
+}
+
 /* ===== UI UPDATES ===== */
 function setButtons(on) {
   $('armBtn').disabled = !on;
@@ -521,17 +566,19 @@ function updateStatus(state) {
 function updateStats() {
   if (!rawResults.length) { $('stats').innerHTML = ''; return; }
   const latencies = rawResults.map(r => r.latencyUs / 1000);
-  const avg = latencies.reduce((a, b) => a + b, 0) / latencies.length;
-  const min = Math.min(...latencies);
-  const max = Math.max(...latencies);
-  const sd = Math.sqrt(latencies.reduce((s, v) => s + (v - avg) ** 2, 0) / latencies.length);
+  const s = computeStats(latencies);
 
   const boxes = [
-    { l: 'Shots', v: latencies.length },
-    { l: 'Average', v: avg.toFixed(3) + ' ms' },
-    { l: 'Min', v: min.toFixed(3) + ' ms' },
-    { l: 'Max', v: max.toFixed(3) + ' ms' },
-    { l: 'Std Dev', v: sd.toFixed(3) + ' ms' },
+    { l: 'Shots', v: s.count },
+    { l: 'Average', v: s.avg.toFixed(3) + ' ms' },
+    { l: 'Median', v: s.median.toFixed(3) + ' ms' },
+    { l: 'Min', v: s.min.toFixed(3) + ' ms' },
+    { l: 'Max', v: s.max.toFixed(3) + ' ms' },
+    { l: 'Range', v: s.range.toFixed(3) + ' ms' },
+    { l: 'Std Dev', v: s.sd.toFixed(3) + ' ms' },
+    { l: 'p90', v: s.p90.toFixed(3) + ' ms' },
+    { l: 'p95', v: s.p95.toFixed(3) + ' ms' },
+    { l: 'p99', v: s.p99.toFixed(3) + ' ms' },
   ];
 
   $('stats').innerHTML = boxes.map(b =>
