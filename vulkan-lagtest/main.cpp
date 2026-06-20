@@ -12,6 +12,8 @@ static bool g_mouseActive = false;
 static bool g_mouseMoved = false;
 static bool g_buttonPressed = false;
 
+static bool g_keyPressed = false;
+
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
     if (action == GLFW_PRESS) g_buttonPressed = true;
     else if (action == GLFW_RELEASE) g_buttonPressed = false;
@@ -19,6 +21,11 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
 
 void cursorPosCallback(GLFWwindow* window, double xpos, double ypos) {
     g_mouseMoved = true;
+}
+
+void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    if (action == GLFW_PRESS) g_keyPressed = true;
+    else if (action == GLFW_RELEASE) g_keyPressed = false;
 }
 
 static std::vector<char> readFile(const std::string& filename) {
@@ -50,7 +57,13 @@ int main() {
 
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetCursorPosCallback(window, cursorPosCallback);
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    glfwSetKeyCallback(window, keyCallback);
+    // On Wayland fullscreen, normal cursor mode clamps position to screen bounds.
+    // DISABLED + raw motion gives unbounded virtual coordinates so movement is always detected.
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    if (glfwRawMouseMotionSupported()) {
+        glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+    }
 
     // Vulkan
     VkApplicationInfo appInfo{};
@@ -420,9 +433,15 @@ int main() {
         prevX = curX;
         prevY = curY;
 
-        bool buttonDown = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+        bool buttonDown = false;
+        for (int btn = GLFW_MOUSE_BUTTON_1; btn < GLFW_MOUSE_BUTTON_LAST; ++btn) {
+            if (glfwGetMouseButton(window, btn) == GLFW_PRESS) {
+                buttonDown = true;
+                break;
+            }
+        }
 
-        bool shouldBeWhite = moved || buttonDown;
+        bool shouldBeWhite = moved || buttonDown || g_keyPressed;
         g_mouseMoved = false;
 
         if (shouldBeWhite != currentWhite) {
