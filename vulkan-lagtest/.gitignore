@@ -1,0 +1,6 @@
+build/
+*.spv
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
