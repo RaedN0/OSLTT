@@ -13,14 +13,20 @@
 #include <unistd.h>
 #include <linux/input.h>
 #include <sys/select.h>
+#include <cerrno>
 
 static std::vector<int> g_inputFds;
 
 static bool openInputDevices() {
+    int opened = 0;
+    int tried = 0;
     for (int i = 0; i < 64; ++i) {
         std::string path = "/dev/input/event" + std::to_string(i);
         int fd = open(path.c_str(), O_RDONLY | O_NONBLOCK);
-        if (fd < 0) continue;
+        if (fd < 0) {
+            if (errno == EACCES || errno == EPERM) tried++;
+            continue;
+        }
 
         unsigned long evbit[EV_MAX / (sizeof(unsigned long) * 8) + 1] = {};
         if (ioctl(fd, EVIOCGBIT(0, sizeof(evbit)), evbit) < 0) {
@@ -28,14 +34,19 @@ static bool openInputDevices() {
             continue;
         }
 
-        // Keep devices that report relative motion (mouse) or keys (keyboard/mouse buttons)
         bool hasRel = (evbit[EV_REL / (sizeof(unsigned long) * 8)] >> (EV_REL % (sizeof(unsigned long) * 8))) & 1;
         bool hasKey = (evbit[EV_KEY / (sizeof(unsigned long) * 8)] >> (EV_KEY % (sizeof(unsigned long) * 8))) & 1;
         if (hasRel || hasKey) {
+            std::cerr << "Opened input device: " << path << " rel=" << hasRel << " key=" << hasKey << std::endl;
             g_inputFds.push_back(fd);
+            opened++;
         } else {
             close(fd);
         }
+    }
+    if (opened == 0 && tried > 0) {
+        std::cerr << "WARNING: " << tried << " input devices exist but permission denied." << std::endl;
+        std::cerr << "Run with 'sudo' or add your user to the 'input' group: sudo usermod -aG input $USER" << std::endl;
     }
     return !g_inputFds.empty();
 }
@@ -47,6 +58,9 @@ static void closeInputDevices() {
 
 static bool pollInputEvents() {
     if (g_inputFds.empty()) return false;
+
+    static int debugFrame = 0;
+    debugFrame++;
 
     fd_set fds;
     FD_ZERO(&fds);
@@ -60,7 +74,12 @@ static bool pollInputEvents() {
     tv.tv_sec = 0;
     tv.tv_usec = 0;
     int ret = select(maxFd + 1, &fds, nullptr, nullptr, &tv);
-    if (ret <= 0) return false;
+    if (ret <= 0) {
+        if (debugFrame == 1 || debugFrame % 300 == 0) {
+            std::cerr << "[pollInputEvents] select returned " << ret << " (no events)" << std::endl;
+        }
+        return false;
+    }
 
     bool triggered = false;
     struct input_event ev;
