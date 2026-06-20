@@ -50,6 +50,7 @@ int main() {
 
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetCursorPosCallback(window, cursorPosCallback);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
     // Vulkan
     VkApplicationInfo appInfo{};
@@ -407,11 +408,22 @@ int main() {
     bool currentWhite = false;
     auto lastPrint = std::chrono::high_resolution_clock::now();
 
+    double prevX, prevY;
+    glfwGetCursorPos(window, &prevX, &prevY);
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
-        bool shouldBeWhite = g_mouseMoved || g_buttonPressed;
-        g_mouseMoved = false; // Reset after reading
+        double curX, curY;
+        glfwGetCursorPos(window, &curX, &curY);
+        bool moved = (curX != prevX || curY != prevY);
+        prevX = curX;
+        prevY = curY;
+
+        bool buttonDown = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+
+        bool shouldBeWhite = moved || buttonDown;
+        g_mouseMoved = false;
 
         if (shouldBeWhite != currentWhite) {
             currentWhite = shouldBeWhite;
