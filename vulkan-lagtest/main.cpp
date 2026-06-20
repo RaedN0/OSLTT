@@ -49,21 +49,22 @@ int main() {
 
     GLFWmonitor* monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Lag Test", monitor, nullptr);
+    // NOTE: On Wayland, true fullscreen (monitor parameter) breaks input events.
+    // Use borderless windowed covering the full screen instead.
+    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Lag Test", nullptr, nullptr);
     if (!window) {
         std::cerr << "Failed to create window" << std::endl;
         return 1;
     }
+    glfwSetWindowPos(window, 0, 0);
+    glfwFocusWindow(window);
 
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetCursorPosCallback(window, cursorPosCallback);
     glfwSetKeyCallback(window, keyCallback);
     // On Wayland fullscreen, normal cursor mode clamps position to screen bounds.
     // DISABLED + raw motion gives unbounded virtual coordinates so movement is always detected.
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    if (glfwRawMouseMotionSupported()) {
-        glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
-    }
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
 
     // Vulkan
     VkApplicationInfo appInfo{};
@@ -443,6 +444,10 @@ int main() {
 
         bool shouldBeWhite = moved || buttonDown || g_keyPressed;
         g_mouseMoved = false;
+
+        // Debug: print input state every frame
+        std::cerr << "moved=" << moved << " btn=" << buttonDown << " key=" << g_keyPressed
+                  << " pos=" << curX << "," << curY << std::endl;
 
         if (shouldBeWhite != currentWhite) {
             currentWhite = shouldBeWhite;
