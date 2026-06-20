@@ -56,7 +56,7 @@ int main() {
         std::cerr << "Failed to create window" << std::endl;
         return 1;
     }
-    glfwSetWindowPos(window, 0, 0);
+    // glfwSetWindowPos has no effect on Wayland; removed.
     glfwFocusWindow(window);
 
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
@@ -446,8 +446,9 @@ int main() {
         g_mouseMoved = false;
 
         // Debug: print input state every frame
+        bool focused = glfwGetWindowAttrib(window, GLFW_FOCUSED);
         std::cerr << "moved=" << moved << " btn=" << buttonDown << " key=" << g_keyPressed
-                  << " pos=" << curX << "," << curY << std::endl;
+                  << " pos=" << curX << "," << curY << " focused=" << focused << std::endl;
 
         if (shouldBeWhite != currentWhite) {
             currentWhite = shouldBeWhite;
