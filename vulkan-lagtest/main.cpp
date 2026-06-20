@@ -37,7 +37,10 @@ static bool openInputDevices() {
         bool hasRel = (evbit[EV_REL / (sizeof(unsigned long) * 8)] >> (EV_REL % (sizeof(unsigned long) * 8))) & 1;
         bool hasKey = (evbit[EV_KEY / (sizeof(unsigned long) * 8)] >> (EV_KEY % (sizeof(unsigned long) * 8))) & 1;
         if (hasRel || hasKey) {
-            std::cerr << "Opened input device: " << path << " rel=" << hasRel << " key=" << hasKey << std::endl;
+            // Steal exclusive grab from compositor so we receive events
+            int grabResult = ioctl(fd, EVIOCGRAB, 1);
+            std::cerr << "Opened input device: " << path << " rel=" << hasRel << " key=" << hasKey
+                      << " grab=" << grabResult << std::endl;
             g_inputFds.push_back(fd);
             opened++;
         } else {
@@ -59,32 +62,9 @@ static void closeInputDevices() {
 static bool pollInputEvents() {
     if (g_inputFds.empty()) return false;
 
-    static int debugFrame = 0;
-    debugFrame++;
-
-    fd_set fds;
-    FD_ZERO(&fds);
-    int maxFd = 0;
-    for (int fd : g_inputFds) {
-        FD_SET(fd, &fds);
-        if (fd > maxFd) maxFd = fd;
-    }
-
-    struct timeval tv{};
-    tv.tv_sec = 0;
-    tv.tv_usec = 0;
-    int ret = select(maxFd + 1, &fds, nullptr, nullptr, &tv);
-    if (ret <= 0) {
-        if (debugFrame == 1 || debugFrame % 300 == 0) {
-            std::cerr << "[pollInputEvents] select returned " << ret << " (no events)" << std::endl;
-        }
-        return false;
-    }
-
     bool triggered = false;
     struct input_event ev;
     for (int fd : g_inputFds) {
-        if (!FD_ISSET(fd, &fds)) continue;
         while (read(fd, &ev, sizeof(ev)) == sizeof(ev)) {
             if (ev.type == EV_REL && (ev.code == REL_X || ev.code == REL_Y)) {
                 triggered = true;
