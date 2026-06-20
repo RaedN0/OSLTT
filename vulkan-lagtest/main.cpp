@@ -6,6 +6,7 @@
 #include <fstream>
 #include <chrono>
 #include <cstring>
+#include <algorithm>
 
 static bool g_mouseActive = false;
 static bool g_mouseMoved = false;
@@ -130,12 +131,22 @@ int main() {
     VkSurfaceCapabilitiesKHR capabilities;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &capabilities);
     VkExtent2D extent = capabilities.currentExtent;
-    if (extent.width == 0 || extent.height == 0) {
+    // On Wayland, currentExtent is (0xFFFFFFFF, 0xFFFFFFFF) when the surface
+    // size is not fixed by the compositor. On some platforms it may be (0, 0).
+    // In both cases we must fall back to the actual framebuffer size.
+    if (extent.width == 0 || extent.height == 0 ||
+        extent.width == 0xFFFFFFFF || extent.height == 0xFFFFFFFF)
+    {
         int w, h;
         glfwGetFramebufferSize(window, &w, &h);
         extent.width = static_cast<uint32_t>(w);
         extent.height = static_cast<uint32_t>(h);
     }
+    // Clamp to the supported range
+    extent.width = std::max(capabilities.minImageExtent.width,
+                            std::min(capabilities.maxImageExtent.width, extent.width));
+    extent.height = std::max(capabilities.minImageExtent.height,
+                             std::min(capabilities.maxImageExtent.height, extent.height));
 
     uint32_t formatCount = 0;
     vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
@@ -156,10 +167,34 @@ int main() {
         presentMode = presentModes[0];
     }
 
+    // Pick a compositeAlpha mode that is actually supported
+    VkCompositeAlphaFlagBitsKHR compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    if (!(capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR)) {
+        if (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR)
+            compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+        else if (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR)
+            compositeAlpha = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+        else if (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR)
+            compositeAlpha = VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR;
+    }
+
+    // Ensure minImageCount is within the supported range
+    uint32_t minImageCount = 2;
+    if (minImageCount < capabilities.minImageCount)
+        minImageCount = capabilities.minImageCount;
+    if (capabilities.maxImageCount > 0 && minImageCount > capabilities.maxImageCount)
+        minImageCount = capabilities.maxImageCount;
+
+    std::cerr << "Swapchain extent: " << extent.width << "x" << extent.height
+              << " | minImageCount=" << minImageCount
+              << " | format=" << surfaceFormat.format
+              << " | presentMode=" << presentMode
+              << " | compositeAlpha=" << compositeAlpha << std::endl;
+
     VkSwapchainCreateInfoKHR swapchainCreateInfo{};
     swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchainCreateInfo.surface = surface;
-    swapchainCreateInfo.minImageCount = 2;
+    swapchainCreateInfo.minImageCount = minImageCount;
     swapchainCreateInfo.imageFormat = surfaceFormat.format;
     swapchainCreateInfo.imageColorSpace = surfaceFormat.colorSpace;
     swapchainCreateInfo.imageExtent = extent;
@@ -167,7 +202,7 @@ int main() {
     swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     swapchainCreateInfo.preTransform = capabilities.currentTransform;
-    swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    swapchainCreateInfo.compositeAlpha = compositeAlpha;
     swapchainCreateInfo.presentMode = presentMode;
     swapchainCreateInfo.clipped = VK_TRUE;
 
