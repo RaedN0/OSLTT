@@ -8,6 +8,77 @@
 #include <cstring>
 #include <algorithm>
 
+// Linux raw input (bypass GLFW on Wayland)
+#include <fcntl.h>
+#include <unistd.h>
+#include <linux/input.h>
+#include <sys/select.h>
+
+static std::vector<int> g_inputFds;
+
+static bool openInputDevices() {
+    for (int i = 0; i < 64; ++i) {
+        std::string path = "/dev/input/event" + std::to_string(i);
+        int fd = open(path.c_str(), O_RDONLY | O_NONBLOCK);
+        if (fd < 0) continue;
+
+        unsigned long evbit[EV_MAX / (sizeof(unsigned long) * 8) + 1] = {};
+        if (ioctl(fd, EVIOCGBIT(0, sizeof(evbit)), evbit) < 0) {
+            close(fd);
+            continue;
+        }
+
+        // Keep devices that report relative motion (mouse) or keys (keyboard/mouse buttons)
+        bool hasRel = (evbit[EV_REL / (sizeof(unsigned long) * 8)] >> (EV_REL % (sizeof(unsigned long) * 8))) & 1;
+        bool hasKey = (evbit[EV_KEY / (sizeof(unsigned long) * 8)] >> (EV_KEY % (sizeof(unsigned long) * 8))) & 1;
+        if (hasRel || hasKey) {
+            g_inputFds.push_back(fd);
+        } else {
+            close(fd);
+        }
+    }
+    return !g_inputFds.empty();
+}
+
+static void closeInputDevices() {
+    for (int fd : g_inputFds) close(fd);
+    g_inputFds.clear();
+}
+
+static bool pollInputEvents() {
+    if (g_inputFds.empty()) return false;
+
+    fd_set fds;
+    FD_ZERO(&fds);
+    int maxFd = 0;
+    for (int fd : g_inputFds) {
+        FD_SET(fd, &fds);
+        if (fd > maxFd) maxFd = fd;
+    }
+
+    struct timeval tv{};
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+    int ret = select(maxFd + 1, &fds, nullptr, nullptr, &tv);
+    if (ret <= 0) return false;
+
+    bool triggered = false;
+    struct input_event ev;
+    for (int fd : g_inputFds) {
+        if (!FD_ISSET(fd, &fds)) continue;
+        while (read(fd, &ev, sizeof(ev)) == sizeof(ev)) {
+            if (ev.type == EV_REL && (ev.code == REL_X || ev.code == REL_Y)) {
+                triggered = true;
+            } else if (ev.type == EV_ABS && (ev.code == ABS_X || ev.code == ABS_Y)) {
+                triggered = true;
+            } else if (ev.type == EV_KEY && ev.value == 1) {
+                triggered = true;
+            }
+        }
+    }
+    return triggered;
+}
+
 static bool g_mouseActive = false;
 static bool g_mouseMoved = false;
 static bool g_buttonPressed = false;
@@ -58,6 +129,10 @@ int main() {
     }
     // glfwSetWindowPos has no effect on Wayland; removed.
     glfwFocusWindow(window);
+
+    if (!openInputDevices()) {
+        std::cerr << "Warning: no input devices found" << std::endl;
+    }
 
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetCursorPosCallback(window, cursorPosCallback);
@@ -434,6 +509,9 @@ int main() {
         prevX = curX;
         prevY = curY;
 
+        // Read raw Linux input events (bypasses GLFW/Wayland focus issues)
+        bool evdevTriggered = pollInputEvents();
+
         bool buttonDown = false;
         for (int btn = GLFW_MOUSE_BUTTON_1; btn < GLFW_MOUSE_BUTTON_LAST; ++btn) {
             if (glfwGetMouseButton(window, btn) == GLFW_PRESS) {
@@ -442,13 +520,12 @@ int main() {
             }
         }
 
-        bool shouldBeWhite = moved || buttonDown || g_keyPressed;
+        bool shouldBeWhite = evdevTriggered || moved || buttonDown || g_keyPressed;
         g_mouseMoved = false;
 
         // Debug: print input state every frame
-        bool focused = glfwGetWindowAttrib(window, GLFW_FOCUSED);
-        std::cerr << "moved=" << moved << " btn=" << buttonDown << " key=" << g_keyPressed
-                  << " pos=" << curX << "," << curY << " focused=" << focused << std::endl;
+        std::cerr << "evdev=" << evdevTriggered << " moved=" << moved << " btn=" << buttonDown << " key=" << g_keyPressed
+                  << " pos=" << curX << "," << curY << std::endl;
 
         if (shouldBeWhite != currentWhite) {
             currentWhite = shouldBeWhite;
@@ -528,6 +605,7 @@ int main() {
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
 
+    closeInputDevices();
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
