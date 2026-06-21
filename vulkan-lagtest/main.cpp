@@ -8,6 +8,9 @@
 #include <cstring>
 #include <algorithm>
 
+#include <cstdlib>
+#include <thread>
+
 static bool g_buttonPressed = false;
 static bool g_keyPressed = false;
 
@@ -98,15 +101,16 @@ static Swapchain createSwapchain(
         : formats[0];
     sc.format = sf.format;
 
-    // Pick present mode — prefer FIFO (vsync)
+    // Pick present mode — prefer IMMEDIATE (uncapped), fallback to MAILBOX, then FIFO
     uint32_t pmCount = 0;
     vkGetPhysicalDeviceSurfacePresentModesKHR(physDev, surface, &pmCount, nullptr);
     std::vector<VkPresentModeKHR> pms(pmCount);
     vkGetPhysicalDeviceSurfacePresentModesKHR(physDev, surface, &pmCount, pms.data());
-    VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
-    bool fifoAvailable = false;
-    for (auto& pm : pms) { if (pm == VK_PRESENT_MODE_FIFO_KHR) { fifoAvailable = true; break; } }
-    if (!fifoAvailable && !pms.empty()) presentMode = pms[0];
+    VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR; // guaranteed
+    for (auto& pm : pms) { if (pm == VK_PRESENT_MODE_IMMEDIATE_KHR) { presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR; break; } }
+    if (presentMode != VK_PRESENT_MODE_IMMEDIATE_KHR) {
+        for (auto& pm : pms) { if (pm == VK_PRESENT_MODE_MAILBOX_KHR) { presentMode = VK_PRESENT_MODE_MAILBOX_KHR; break; } }
+    }
 
     // Composite alpha
     VkCompositeAlphaFlagBitsKHR compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
@@ -190,7 +194,16 @@ static Swapchain createSwapchain(
     return sc;
 }
 
-int main() {
+int main(int argc, char** argv) {
+    // Parse FPS limit from command line: ./lagtest [fps_limit]
+    // 0 or omitted = uncapped (only limited by hardware)
+    int fpsLimit = 0;
+    if (argc >= 2) {
+        fpsLimit = std::atoi(argv[1]);
+        if (fpsLimit < 0) fpsLimit = 0;
+    }
+    std::cerr << "FPS limit: " << (fpsLimit > 0 ? std::to_string(fpsLimit) : "uncapped") << std::endl;
+
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
@@ -439,6 +452,7 @@ int main() {
     int acquireFailCount = 0;
     int recreateCount = 0;
     VkResult lastAcquire = VK_SUCCESS, lastPresent = VK_SUCCESS;
+    auto frameStart = std::chrono::steady_clock::now();
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -478,6 +492,15 @@ int main() {
         }
 
         // Wait for previous frame
+        // Software frame rate limiter
+        if (fpsLimit > 0) {
+            auto targetFrameTime = std::chrono::microseconds(1000000 / fpsLimit);
+            auto elapsed = std::chrono::steady_clock::now() - frameStart;
+            if (elapsed < targetFrameTime) {
+                std::this_thread::sleep_for(targetFrameTime - elapsed);
+            }
+        }
+
         VkResult waitResult = vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, 1000000000);
         if (waitResult == VK_TIMEOUT) {
             std::cerr << "WARNING: vkWaitForFences timed out" << std::endl;
@@ -608,6 +631,8 @@ int main() {
         } else if (presentResult != VK_SUCCESS && presentResult != VK_SUBOPTIMAL_KHR) {
             std::cerr << "WARNING: vkQueuePresentKHR returned " << presentResult << std::endl;
         }
+
+        frameStart = std::chrono::steady_clock::now();
     }
 
     // Cleanup
