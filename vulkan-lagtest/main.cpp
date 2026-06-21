@@ -7,6 +7,14 @@
 #include <chrono>
 #include <cstring>
 #include <algorithm>
+#include <fcntl.h>
+#include <unistd.h>
+#include <linux/input.h>
+#include <csignal>
+#include <cstdlib>
+#include <cerrno>
+
+static std::vector<int> g_inputFds;
 
 static bool g_mouseMoved = false;
 static bool g_buttonPressed = false;
@@ -24,6 +32,75 @@ void cursorPosCallback(GLFWwindow* window, double xpos, double ypos) {
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (action == GLFW_PRESS) g_keyPressed = true;
     else if (action == GLFW_RELEASE) g_keyPressed = false;
+}
+
+static bool openInputDevices() {
+    int opened = 0;
+    int tried = 0;
+    for (int i = 0; i < 64; ++i) {
+        std::string path = "/dev/input/event" + std::to_string(i);
+        int fd = open(path.c_str(), O_RDONLY | O_NONBLOCK);
+        if (fd < 0) {
+            if (errno == EACCES || errno == EPERM) tried++;
+            continue;
+        }
+
+        unsigned long evbit[EV_MAX / (sizeof(unsigned long) * 8) + 1] = {};
+        if (ioctl(fd, EVIOCGBIT(0, sizeof(evbit)), evbit) < 0) {
+            close(fd);
+            continue;
+        }
+
+        bool hasRel = (evbit[EV_REL / (sizeof(unsigned long) * 8)] >> (EV_REL % (sizeof(unsigned long) * 8))) & 1;
+        if (hasRel) {
+            int grabResult = ioctl(fd, EVIOCGRAB, 1);
+            std::cerr << "Opened input device: " << path << " grab=" << grabResult << std::endl;
+            g_inputFds.push_back(fd);
+            opened++;
+        } else {
+            close(fd);
+        }
+    }
+    if (opened == 0 && tried > 0) {
+        std::cerr << "WARNING: " << tried << " input devices exist but permission denied." << std::endl;
+        std::cerr << "Run with 'sudo' or add your user to the 'input' group: sudo usermod -aG input $USER" << std::endl;
+    }
+    return !g_inputFds.empty();
+}
+
+static void closeInputDevices() {
+    for (int fd : g_inputFds) {
+        ioctl(fd, EVIOCGRAB, 0);
+        close(fd);
+    }
+    g_inputFds.clear();
+}
+
+static bool pollInputEvents() {
+    if (g_inputFds.empty()) return false;
+    bool triggered = false;
+    struct input_event ev;
+    for (int fd : g_inputFds) {
+        while (read(fd, &ev, sizeof(ev)) == sizeof(ev)) {
+            if (ev.type == EV_REL && (ev.code == REL_X || ev.code == REL_Y)) {
+                triggered = true;
+            } else if (ev.type == EV_ABS && (ev.code == ABS_X || ev.code == ABS_Y)) {
+                triggered = true;
+            } else if (ev.type == EV_KEY && ev.value == 1) {
+                triggered = true;
+            }
+        }
+    }
+    return triggered;
+}
+
+static void signalHandler(int) {
+    for (int fd : g_inputFds) {
+        ioctl(fd, EVIOCGRAB, 0);
+        close(fd);
+    }
+    g_inputFds.clear();
+    exit(0);
 }
 
 static std::vector<char> readFile(const std::string& filename) {
@@ -58,6 +135,13 @@ int main() {
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetCursorPosCallback(window, cursorPosCallback);
     glfwSetKeyCallback(window, keyCallback);
+
+    if (!openInputDevices()) {
+        std::cerr << "Warning: no input devices found" << std::endl;
+    }
+    signal(SIGINT, signalHandler);
+    signal(SIGTERM, signalHandler);
+    signal(SIGQUIT, signalHandler);
 
     // Vulkan
     VkApplicationInfo appInfo{};
@@ -415,7 +499,8 @@ int main() {
         prevX = curX;
         prevY = curY;
 
-        bool shouldBeWhite = moved || g_buttonPressed || g_keyPressed || g_mouseMoved;
+        bool evdevTriggered = pollInputEvents();
+        bool shouldBeWhite = evdevTriggered || moved || g_buttonPressed || g_keyPressed || g_mouseMoved;
         g_mouseMoved = false;
 
         if (shouldBeWhite != currentWhite) {
@@ -493,6 +578,7 @@ int main() {
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
 
+    closeInputDevices();
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
