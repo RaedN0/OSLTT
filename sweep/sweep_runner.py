@@ -74,15 +74,23 @@ def compute_stats(latencies_ms):
 
 # ─── System Config ────────────────────────────────────────────────────────────
 
-def apply_scheduler(scheduler, dry_run=False):
-    """Swap scx scheduler. 'none' = scx stop (back to CFS/EEVDF)."""
+def apply_scheduler(scheduler_cmd, dry_run=False):
+    """Swap scx scheduler. 'none' = scx stop (back to kernel CFS/EEVDF).
+    
+    scheduler_cmd is the full command with args, e.g.:
+      'scx_lavd --performance'
+      'scx_bpfland --primary-domain performance'
+      'none' (stops scx, reverts to kernel scheduler)
+    """
     if dry_run:
-        print(f"  [dry-run] scheduler: {scheduler}")
+        print(f"  [dry-run] scheduler: {scheduler_cmd}")
         return
 
-    run_cmd("sudo scx stop", check=False)
-    if scheduler and scheduler != "none":
-        run_cmd(f"sudo scx {scheduler}", check=True)
+    # Stop any running scx scheduler
+    run_cmd("sudo scx stop 2>/dev/null; true", check=False)
+
+    if scheduler_cmd and scheduler_cmd != "none":
+        run_cmd(f"sudo {scheduler_cmd}", check=True)
 
 
 def apply_governor(governor, dry_run=False):
@@ -252,7 +260,7 @@ def main():
 
     for run in config["runs"]:
         run_name = run["name"]
-        scheduler = run.get("scheduler", "none")
+        scheduler_cmd = run.get("scheduler", "none")
         governor = run.get("governor", "")
         pre_run = run.get("pre_run", [])
         post_run = run.get("post_run", [])
@@ -265,13 +273,13 @@ def main():
 
             print(f"\n{'─' * 60}")
             print(f"Run: {run_name} (repeat {rep}/{repeats})")
-            print(f"  Scheduler: {scheduler}")
+            print(f"  Scheduler: {scheduler_cmd}")
             print(f"  Governor:  {governor or '(unchanged)'}")
             print(f"{'─' * 60}")
 
             # 1. Apply system configuration
             print("\n[1] Applying system configuration...")
-            apply_scheduler(scheduler, dry_run)
+            apply_scheduler(scheduler_cmd, dry_run)
             apply_governor(governor, dry_run)
             run_extra_commands(pre_run, "pre_run", dry_run)
 
@@ -316,7 +324,7 @@ def main():
 
             result_entry = {
                 "run_name": run_name,
-                "scheduler": scheduler,
+                "scheduler": scheduler_cmd,
                 "governor": governor,
                 "repeat": rep,
                 "timestamp": datetime.now().isoformat(),
