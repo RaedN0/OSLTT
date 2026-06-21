@@ -131,6 +131,10 @@ int main() {
     VkQueue graphicsQueue;
     vkGetDeviceQueue(device, queueFamilyIndex, 0, &graphicsQueue);
 
+    // On Wayland, poll events so the compositor can configure the surface before we query it
+    for (int i = 0; i < 10; ++i) {
+        glfwPollEvents();
+    }
     VkSurfaceCapabilitiesKHR capabilities;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &capabilities);
     VkExtent2D extent = capabilities.currentExtent;
@@ -428,19 +432,22 @@ int main() {
             std::cout << (currentWhite ? "WHITE" : "BLACK") << " " << us << std::endl;
         }
 
-        VkResult waitResult = vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, 1000000000); // 1 second timeout
+        VkResult waitResult = vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, 1000000000);
         if (waitResult == VK_TIMEOUT) {
-            std::cerr << "WARNING: vkWaitForFences timed out (GPU hung?)" << std::endl;
+            std::cerr << "WARNING: vkWaitForFences timed out" << std::endl;
             continue;
         }
-        vkResetFences(device, 1, &inFlightFence);
 
         uint32_t imageIndex;
         VkResult acquireResult = vkAcquireNextImageKHR(device, swapchain, 1000000000, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
         if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR) {
-            std::cerr << "WARNING: vkAcquireNextImageKHR returned " << acquireResult << std::endl;
+            // Acquire failed — DON'T reset fence, leave it signaled so next wait succeeds immediately
+            // Poll events to let compositor configure the surface
+            glfwPollEvents();
             continue;
         }
+        // Only reset fence now that we have an image to submit work for
+        vkResetFences(device, 1, &inFlightFence);
 
         vkResetCommandBuffer(commandBuffers[imageIndex], 0);
         VkCommandBufferBeginInfo beginInfo{};
