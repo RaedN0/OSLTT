@@ -415,15 +415,17 @@ int main() {
         prevX = curX;
         prevY = curY;
 
+        // Debug output every 60 frames
+        static int frame = 0;
+
         // Only use actual position change, not callbacks (callbacks fire every frame on Wayland)
         if (moved) {
-            holdFrames = 500000;  // Large number because loop runs at millions of FPS
+            std::cerr << "*** MOVED at frame " << frame << " pos=" << curX << "," << curY << std::endl;
+            holdFrames = 500000;
         }
         bool shouldBeWhite = holdFrames > 0;
         if (holdFrames > 0) holdFrames--;
 
-        // Debug output every 60 frames
-        static int frame = 0;
         if (frame++ % 60 == 0) {
             std::cerr << "frame=" << frame << " moved=" << moved << " btn=" << g_buttonPressed
                       << " key=" << g_keyPressed << " cb=" << g_mouseMoved
