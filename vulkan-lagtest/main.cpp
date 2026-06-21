@@ -41,18 +41,10 @@ static std::vector<char> readFile(const std::string& filename) {
 
 int main() {
     glfwInit();
-    // Force X11 backend via XWayland — GLFW's Wayland backend has broken pointer events
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-    glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
-#ifdef GLFW_PLATFORM_X11
-    glfwWindowHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
-#endif
 
-    // X11 fullscreen works reliably with input events
-    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-    GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Lag Test", monitor, nullptr);
+    // Simple windowed mode test — not fullscreen, has decorations, user must click to focus
+    GLFWwindow* window = glfwCreateWindow(800, 600, "Lag Test", nullptr, nullptr);
     if (!window) {
         std::cerr << "Failed to create window" << std::endl;
         return 1;
@@ -419,6 +411,14 @@ int main() {
         prevY = curY;
 
         bool shouldBeWhite = moved || g_buttonPressed || g_keyPressed || g_mouseMoved;
+
+        // Debug output every 60 frames
+        static int frame = 0;
+        if (frame++ % 60 == 0) {
+            std::cerr << "frame=" << frame << " moved=" << moved << " btn=" << g_buttonPressed
+                      << " key=" << g_keyPressed << " cb=" << g_mouseMoved
+                      << " pos=" << curX << "," << curY << std::endl;
+        }
         g_mouseMoved = false;
 
         if (shouldBeWhite != currentWhite) {
