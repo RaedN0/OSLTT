@@ -428,11 +428,19 @@ int main() {
             std::cout << (currentWhite ? "WHITE" : "BLACK") << " " << us << std::endl;
         }
 
-        vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+        VkResult waitResult = vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, 1000000000); // 1 second timeout
+        if (waitResult == VK_TIMEOUT) {
+            std::cerr << "WARNING: vkWaitForFences timed out (GPU hung?)" << std::endl;
+            continue;
+        }
         vkResetFences(device, 1, &inFlightFence);
 
         uint32_t imageIndex;
-        vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+        VkResult acquireResult = vkAcquireNextImageKHR(device, swapchain, 1000000000, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+        if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR) {
+            std::cerr << "WARNING: vkAcquireNextImageKHR returned " << acquireResult << std::endl;
+            continue;
+        }
 
         vkResetCommandBuffer(commandBuffers[imageIndex], 0);
         VkCommandBufferBeginInfo beginInfo{};
@@ -468,7 +476,11 @@ int main() {
         submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = &renderFinishedSemaphore;
-        vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence);
+        VkResult submitResult = vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence);
+        if (submitResult != VK_SUCCESS) {
+            std::cerr << "WARNING: vkQueueSubmit returned " << submitResult << std::endl;
+            continue;
+        }
 
         VkPresentInfoKHR presentInfo{};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -477,7 +489,10 @@ int main() {
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = &swapchain;
         presentInfo.pImageIndices = &imageIndex;
-        vkQueuePresentKHR(graphicsQueue, &presentInfo);
+        VkResult presentResult = vkQueuePresentKHR(graphicsQueue, &presentInfo);
+        if (presentResult != VK_SUCCESS && presentResult != VK_SUBOPTIMAL_KHR) {
+            std::cerr << "WARNING: vkQueuePresentKHR returned " << presentResult << std::endl;
+        }
     }
 
     vkDeviceWaitIdle(device);
