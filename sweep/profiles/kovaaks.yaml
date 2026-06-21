@@ -1,0 +1,23 @@
+# KovaaK's Aim Trainer — game profile for OSLTT sweep runner
+# Steam App ID: 824270
+
+name: "KovaaK's"
+
+# Command to launch the game
+launch: "steam steam://run/824270"
+
+# Seconds to wait for the game to fully start before running setup
+wait: 15
+
+# Setup steps — run in order after the game launches.
+# Each step has a `cmd` (shell command) and `delay_after` (seconds to wait after).
+# Adjust coordinates for your resolution (these are for 2560x1440).
+setup:
+  - cmd: "ydotool click 0xC0"
+    delay_after: 5
+  # Move mouse slightly right to confirm game responds to input
+  - cmd: "ydotool mousemove -- 10 0"
+    delay_after: 1
+
+# Command to close the game when the measurement is done
+cleanup: "steam -shutdown"

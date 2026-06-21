@@ -1,0 +1,62 @@
+# OSLTT Sweep Configuration
+# Defines what system configurations to test and OSLTT measurement settings.
+
+# Which game profile to use (from profiles/<name>.yaml)
+game: kovaaks
+
+# OSLTT serial device
+device: /dev/ttyACM0
+
+# How many times to repeat each run (for averaging)
+repeats: 3
+
+# OSLTT measurement settings
+osltt:
+  shots: 100          # number of shots per run
+  delay_ms: 10        # delay between shots
+  move_px: 100        # mouse movement distance (pixels)
+  window_ms: 20       # sampling window (ms)
+  threshold: 0        # 0 = auto-detect
+
+# ─── Runs ─────────────────────────────────────────────────────────────────────
+# Each run applies a system configuration, launches the game, runs the test,
+# and saves results. `scheduler` uses scx (hot-swappable, no reboot needed).
+#
+# Fields:
+#   name:        Label for the run (used in results)
+#   scheduler:   scx scheduler name (lavd, bpfland, rusty, etc.) or "none" for CFS/EEVDF
+#   governor:   CPU governor (performance, powersave, schedutil, etc.) — optional
+#   pre_run:    List of shell commands to run BEFORE game launch (optional)
+#   post_run:   List of shell commands to run AFTER game cleanup (optional)
+
+runs:
+  - name: scx_lavd
+    scheduler: lavd
+    governor: performance
+
+  - name: scx_bpfland
+    scheduler: bpfland
+    governor: performance
+
+  - name: scx_rusty
+    scheduler: rusty
+    governor: performance
+
+  - name: cfs_powersave
+    scheduler: none
+    governor: powersave
+
+  - name: cfs_performance
+    scheduler: none
+    governor: performance
+
+# Example with extra commands:
+#   - name: scx_lavd_smt_off
+#     scheduler: lavd
+#     governor: performance
+#     pre_run:
+#       - "echo 0 | sudo tee /sys/devices/system/cpu/cpu1/online"
+#       - "echo 0 | sudo tee /sys/devices/system/cpu/cpu3/online"
+#     post_run:
+#       - "echo 1 | sudo tee /sys/devices/system/cpu/cpu1/online"
+#       - "echo 1 | sudo tee /sys/devices/system/cpu/cpu3/online"

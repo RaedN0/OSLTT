@@ -1,0 +1,27 @@
+# Example game profile — copy this and adapt for your game.
+# Place in profiles/<name>.yaml and reference it in sweep_config.yaml as `game: <name>`.
+
+name: "Game Name"
+
+# Launch command (Steam, Proton, native executable, etc.)
+launch: "steam steam://run/123456"
+
+# Seconds to wait for the game window to appear
+wait: 10
+
+# Setup steps to get the game into a testable state.
+# Each step runs a shell command, then waits `delay_after` seconds.
+# Common commands:
+#   ydotool click 0xC0                          # left click at current position
+#   ydotool mousemove -- <x> <y>                # move cursor to absolute position
+#   ydotool mousemove -- <dx> <dy>              # move cursor by delta (if relative)
+#   ydotool key <keycode>                       # press a key
+#   sleep <seconds>                             # just wait
+setup:
+  - cmd: "ydotool click 0xC0"
+    delay_after: 3
+  - cmd: "ydotool mousemove -- 10 0"
+    delay_after: 1
+
+# Command to close the game
+cleanup: "steam -shutdown"
