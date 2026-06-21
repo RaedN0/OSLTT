@@ -8,100 +8,8 @@
 #include <cstring>
 #include <algorithm>
 
-// Linux raw input (bypass GLFW on Wayland)
-#include <fcntl.h>
-#include <unistd.h>
-#include <linux/input.h>
-#include <sys/select.h>
-#include <cerrno>
-
-static std::vector<int> g_inputFds;
-
-static bool openInputDevices() {
-    int opened = 0;
-    int tried = 0;
-    for (int i = 0; i < 64; ++i) {
-        std::string path = "/dev/input/event" + std::to_string(i);
-        int fd = open(path.c_str(), O_RDONLY | O_NONBLOCK);
-        if (fd < 0) {
-            if (errno == EACCES || errno == EPERM) tried++;
-            continue;
-        }
-
-        unsigned long evbit[EV_MAX / (sizeof(unsigned long) * 8) + 1] = {};
-        if (ioctl(fd, EVIOCGBIT(0, sizeof(evbit)), evbit) < 0) {
-            close(fd);
-            continue;
-        }
-
-        bool hasRel = (evbit[EV_REL / (sizeof(unsigned long) * 8)] >> (EV_REL % (sizeof(unsigned long) * 8))) & 1;
-        bool hasKey = (evbit[EV_KEY / (sizeof(unsigned long) * 8)] >> (EV_KEY % (sizeof(unsigned long) * 8))) & 1;
-        if (hasRel || hasKey) {
-            std::cerr << "Opened input device: " << path << " rel=" << hasRel << " key=" << hasKey << std::endl;
-            g_inputFds.push_back(fd);
-            opened++;
-        } else {
-            close(fd);
-        }
-    }
-    if (opened == 0 && tried > 0) {
-        std::cerr << "WARNING: " << tried << " input devices exist but permission denied." << std::endl;
-        std::cerr << "Run with 'sudo' or add your user to the 'input' group: sudo usermod -aG input $USER" << std::endl;
-    }
-    return !g_inputFds.empty();
-}
-
-static void closeInputDevices() {
-    for (int fd : g_inputFds) close(fd);
-    g_inputFds.clear();
-}
-
-static bool pollInputEvents() {
-    if (g_inputFds.empty()) return false;
-
-    static int debugFrame = 0;
-    debugFrame++;
-
-    fd_set fds;
-    FD_ZERO(&fds);
-    int maxFd = 0;
-    for (int fd : g_inputFds) {
-        FD_SET(fd, &fds);
-        if (fd > maxFd) maxFd = fd;
-    }
-
-    struct timeval tv{};
-    tv.tv_sec = 0;
-    tv.tv_usec = 0;
-    int ret = select(maxFd + 1, &fds, nullptr, nullptr, &tv);
-    if (ret <= 0) {
-        if (debugFrame == 1 || debugFrame % 300 == 0) {
-            std::cerr << "[pollInputEvents] select returned " << ret << " (no events)" << std::endl;
-        }
-        return false;
-    }
-
-    bool triggered = false;
-    struct input_event ev;
-    for (int fd : g_inputFds) {
-        if (!FD_ISSET(fd, &fds)) continue;
-        while (read(fd, &ev, sizeof(ev)) == sizeof(ev)) {
-            if (ev.type == EV_REL && (ev.code == REL_X || ev.code == REL_Y)) {
-                triggered = true;
-            } else if (ev.type == EV_ABS && (ev.code == ABS_X || ev.code == ABS_Y)) {
-                triggered = true;
-            } else if (ev.type == EV_KEY && ev.value == 1) {
-                triggered = true;
-            }
-        }
-    }
-    return triggered;
-}
-
-static bool g_mouseActive = false;
 static bool g_mouseMoved = false;
 static bool g_buttonPressed = false;
-
 static bool g_keyPressed = false;
 
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
@@ -137,28 +45,19 @@ int main() {
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
     glfwWindowHint(GLFW_DECORATED, GLFW_FALSE);
 
+    // On Wayland, use a large borderless window instead of true fullscreen.
+    // True fullscreen (monitor parameter) causes pointer-focus bugs on some compositors.
     GLFWmonitor* monitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-    // NOTE: On Wayland, true fullscreen (monitor parameter) breaks input events.
-    // Use borderless windowed covering the full screen instead.
     GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Lag Test", nullptr, nullptr);
     if (!window) {
         std::cerr << "Failed to create window" << std::endl;
         return 1;
     }
-    // glfwSetWindowPos has no effect on Wayland; removed.
-    glfwFocusWindow(window);
-
-    if (!openInputDevices()) {
-        std::cerr << "Warning: no input devices found" << std::endl;
-    }
 
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetCursorPosCallback(window, cursorPosCallback);
     glfwSetKeyCallback(window, keyCallback);
-    // On Wayland fullscreen, normal cursor mode clamps position to screen bounds.
-    // DISABLED + raw motion gives unbounded virtual coordinates so movement is always detected.
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
 
     // Vulkan
     VkApplicationInfo appInfo{};
@@ -240,9 +139,6 @@ int main() {
     VkSurfaceCapabilitiesKHR capabilities;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &capabilities);
     VkExtent2D extent = capabilities.currentExtent;
-    // On Wayland, currentExtent is (0xFFFFFFFF, 0xFFFFFFFF) when the surface
-    // size is not fixed by the compositor. On some platforms it may be (0, 0).
-    // In both cases we must fall back to the actual framebuffer size.
     if (extent.width == 0 || extent.height == 0 ||
         extent.width == 0xFFFFFFFF || extent.height == 0xFFFFFFFF)
     {
@@ -251,7 +147,6 @@ int main() {
         extent.width = static_cast<uint32_t>(w);
         extent.height = static_cast<uint32_t>(h);
     }
-    // Clamp to the supported range
     extent.width = std::max(capabilities.minImageExtent.width,
                             std::min(capabilities.maxImageExtent.width, extent.width));
     extent.height = std::max(capabilities.minImageExtent.height,
@@ -276,7 +171,6 @@ int main() {
         presentMode = presentModes[0];
     }
 
-    // Pick a compositeAlpha mode that is actually supported
     VkCompositeAlphaFlagBitsKHR compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     if (!(capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR)) {
         if (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR)
@@ -287,18 +181,11 @@ int main() {
             compositeAlpha = VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR;
     }
 
-    // Ensure minImageCount is within the supported range
     uint32_t minImageCount = 2;
     if (minImageCount < capabilities.minImageCount)
         minImageCount = capabilities.minImageCount;
     if (capabilities.maxImageCount > 0 && minImageCount > capabilities.maxImageCount)
         minImageCount = capabilities.maxImageCount;
-
-    std::cerr << "Swapchain extent: " << extent.width << "x" << extent.height
-              << " | minImageCount=" << minImageCount
-              << " | format=" << surfaceFormat.format
-              << " | presentMode=" << presentMode
-              << " | compositeAlpha=" << compositeAlpha << std::endl;
 
     VkSwapchainCreateInfoKHR swapchainCreateInfo{};
     swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -384,7 +271,6 @@ int main() {
         vkCreateFramebuffer(device, &fbInfo, nullptr, &framebuffers[i]);
     }
 
-    // Shaders
     auto vertShaderCode = readFile("vert.spv");
     auto fragShaderCode = readFile("frag.spv");
 
@@ -499,18 +385,19 @@ int main() {
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = commandPool;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = (uint32_t)commandBuffers.size();
+    allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
     vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data());
 
     VkSemaphoreCreateInfo semaphoreInfo{};
-    VkSemaphore imageAvailableSemaphore, renderFinishedSemaphore;
-    vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphore);
-    vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphore);
-
     VkFenceCreateInfo fenceInfo{};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    VkSemaphore imageAvailableSemaphore;
+    VkSemaphore renderFinishedSemaphore;
     VkFence inFlightFence;
+    vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphore);
+    vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphore);
     vkCreateFence(device, &fenceInfo, nullptr, &inFlightFence);
 
     bool currentWhite = false;
@@ -528,23 +415,8 @@ int main() {
         prevX = curX;
         prevY = curY;
 
-        // Read raw Linux input events (bypasses GLFW/Wayland focus issues)
-        bool evdevTriggered = pollInputEvents();
-
-        bool buttonDown = false;
-        for (int btn = GLFW_MOUSE_BUTTON_1; btn < GLFW_MOUSE_BUTTON_LAST; ++btn) {
-            if (glfwGetMouseButton(window, btn) == GLFW_PRESS) {
-                buttonDown = true;
-                break;
-            }
-        }
-
-        bool shouldBeWhite = evdevTriggered || moved || buttonDown || g_keyPressed;
+        bool shouldBeWhite = moved || g_buttonPressed || g_keyPressed || g_mouseMoved;
         g_mouseMoved = false;
-
-        // Debug: print input state every frame
-        std::cerr << "evdev=" << evdevTriggered << " moved=" << moved << " btn=" << buttonDown << " key=" << g_keyPressed
-                  << " pos=" << curX << "," << curY << std::endl;
 
         if (shouldBeWhite != currentWhite) {
             currentWhite = shouldBeWhite;
@@ -576,19 +448,16 @@ int main() {
         vkCmdBeginRenderPass(commandBuffers[imageIndex], &rpBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
-        float color[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-        if (currentWhite) {
-            color[0] = 1.0f; color[1] = 1.0f; color[2] = 1.0f;
-        }
+        float color[4] = {currentWhite ? 1.0f : 0.0f, currentWhite ? 1.0f : 0.0f, currentWhite ? 1.0f : 0.0f, 1.0f};
         vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(color), color);
         vkCmdDraw(commandBuffers[imageIndex], 3, 1, 0, 0);
-        vkCmdEndRenderPass(commandBuffers[imageIndex]);
 
+        vkCmdEndRenderPass(commandBuffers[imageIndex]);
         vkEndCommandBuffer(commandBuffers[imageIndex]);
 
+        VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
         submitInfo.waitSemaphoreCount = 1;
         submitInfo.pWaitSemaphores = &imageAvailableSemaphore;
         submitInfo.pWaitDstStageMask = waitStages;
@@ -615,16 +484,15 @@ int main() {
     vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
     vkDestroyCommandPool(device, commandPool, nullptr);
     for (auto& fb : framebuffers) vkDestroyFramebuffer(device, fb, nullptr);
+    for (auto& iv : imageViews) vkDestroyImageView(device, iv, nullptr);
     vkDestroyPipeline(device, pipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyRenderPass(device, renderPass, nullptr);
-    for (auto& iv : imageViews) vkDestroyImageView(device, iv, nullptr);
     vkDestroySwapchainKHR(device, swapchain, nullptr);
     vkDestroyDevice(device, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
 
-    closeInputDevices();
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
