@@ -400,6 +400,7 @@ int main() {
     vkCreateFence(device, &fenceInfo, nullptr, &inFlightFence);
 
     bool currentWhite = false;
+    auto lastInputTime = std::chrono::high_resolution_clock::now();
     auto lastPrint = std::chrono::high_resolution_clock::now();
 
     double prevX, prevY;
@@ -414,7 +415,15 @@ int main() {
         prevX = curX;
         prevY = curY;
 
-        bool shouldBeWhite = moved || g_buttonPressed || g_keyPressed || g_mouseMoved;
+        bool inputActive = moved || g_buttonPressed || g_keyPressed || g_mouseMoved;
+        if (inputActive) {
+            lastInputTime = std::chrono::high_resolution_clock::now();
+        }
+
+        // Stay white for 150ms after last input detected
+        auto timeSinceInput = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::high_resolution_clock::now() - lastInputTime).count();
+        bool shouldBeWhite = timeSinceInput < 150;
 
         // Debug output every 60 frames
         static int frame = 0;
