@@ -400,11 +400,13 @@ int main() {
     vkCreateFence(device, &fenceInfo, nullptr, &inFlightFence);
 
     bool currentWhite = false;
-    int holdFrames = 0;
-    auto lastPrint = std::chrono::high_resolution_clock::now();
-
+    auto holdUntil = std::chrono::steady_clock::now();
     double prevX, prevY;
     glfwGetCursorPos(window, &prevX, &prevY);
+
+    auto fpsStart = std::chrono::steady_clock::now();
+    int fpsFrames = 0;
+    uint64_t totalFrames = 0;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -415,29 +417,30 @@ int main() {
         prevX = curX;
         prevY = curY;
 
-        // Debug output every 60 frames
-        static int frame = 0;
+        auto now = std::chrono::steady_clock::now();
 
-        // Only use actual position change, not callbacks (callbacks fire every frame on Wayland)
         if (moved) {
-            std::cerr << "*** MOVED at frame " << frame << " pos=" << curX << "," << curY << std::endl;
-            holdFrames = 500000;
+            holdUntil = now + std::chrono::milliseconds(200);
         }
-        bool shouldBeWhite = holdFrames > 0;
-        if (holdFrames > 0) holdFrames--;
 
-        if (frame++ % 60 == 0) {
-            std::cerr << "frame=" << frame << " moved=" << moved << " btn=" << g_buttonPressed
-                      << " key=" << g_keyPressed << " cb=" << g_mouseMoved
-                      << " pos=" << curX << "," << curY << std::endl;
-        }
-        g_mouseMoved = false;
+        bool shouldBeWhite = (now < holdUntil);
 
         if (shouldBeWhite != currentWhite) {
             currentWhite = shouldBeWhite;
-            auto now = std::chrono::high_resolution_clock::now();
-            auto us = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
-            std::cerr << (currentWhite ? "WHITE" : "BLACK") << " " << us << " holdFrames=" << holdFrames << std::endl;
+            auto us = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+            std::cerr << (currentWhite ? "WHITE" : "BLACK") << " " << us
+                      << " currentWhite=" << currentWhite << std::endl;
+        }
+
+        // FPS counter every 1 second
+        fpsFrames++;
+        totalFrames++;
+        if (now - fpsStart >= std::chrono::seconds(1)) {
+            std::cerr << "FPS: " << fpsFrames << " currentWhite=" << currentWhite
+                      << " pos=" << curX << "," << curY << std::endl;
+            fpsFrames = 0;
+            fpsStart = now;
         }
 
         VkResult waitResult = vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, 1000000000);
@@ -468,6 +471,12 @@ int main() {
         rpBeginInfo.framebuffer = framebuffers[imageIndex];
         rpBeginInfo.renderArea.extent = extent;
         VkClearValue clearValue{};
+        if (currentWhite) {
+            clearValue.color.float32[0] = 1.0f;
+            clearValue.color.float32[1] = 1.0f;
+            clearValue.color.float32[2] = 1.0f;
+            clearValue.color.float32[3] = 1.0f;
+        }
         rpBeginInfo.pClearValues = &clearValue;
         rpBeginInfo.clearValueCount = 1;
 
@@ -475,11 +484,6 @@ int main() {
         vkCmdBindPipeline(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
         float color[4] = {currentWhite ? 1.0f : 0.0f, currentWhite ? 1.0f : 0.0f, currentWhite ? 1.0f : 0.0f, 1.0f};
-        static int colorDebugFrame = 0;
-        if (colorDebugFrame++ % 500000 == 0) {
-            std::cerr << "render color=[" << color[0] << "," << color[1] << "," << color[2] << "," << color[3]
-                      << "] currentWhite=" << currentWhite << " holdFrames=" << holdFrames << std::endl;
-        }
         vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(color), color);
         vkCmdDraw(commandBuffers[imageIndex], 3, 1, 0, 0);
 
