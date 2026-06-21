@@ -131,8 +131,7 @@ static void computeBaseline(uint16_t &baseline, uint16_t &actualThreshold,
 
   actualThreshold = cfgThreshold;
   if (actualThreshold == 0) {
-    uint16_t tempThresh = (uint16_t)((baseline * 12UL) / 100);
-    actualThreshold = (tempThresh > 60) ? tempThresh : (uint16_t)60;
+    actualThreshold = 200;
   }
   lowerBound = (baseline > actualThreshold) ? (baseline - actualThreshold) : 0;
   uint16_t sumThresh = baseline + actualThreshold;
