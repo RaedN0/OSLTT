@@ -142,10 +142,6 @@ static Swapchain createSwapchain(
 
     VkResult r = vkCreateSwapchainKHR(device, &ci, nullptr, &sc.handle);
     if (r != VK_SUCCESS) {
-        std::cerr << "createSwapchain: vkCreateSwapchainKHR returned " << r << std::endl;
-        std::cerr << "  extent=" << sc.extent.width << "x" << sc.extent.height
-                  << " format=" << sf.format << " presentMode=" << presentMode
-                  << " minImageCount=" << minImageCount << std::endl;
         return sc;
     }
 
@@ -186,11 +182,6 @@ static Swapchain createSwapchain(
     ai.commandBufferCount = imageCount;
     vkAllocateCommandBuffers(device, &ai, sc.commandBuffers.data());
 
-    std::cerr << "=== SWAPCHAIN (re)created ===" << std::endl;
-    std::cerr << "  extent=" << sc.extent.width << "x" << sc.extent.height << std::endl;
-    std::cerr << "  format=" << sf.format << " colorSpace=" << sf.colorSpace << std::endl;
-    std::cerr << "  presentMode=" << presentMode << " images=" << imageCount << std::endl;
-
     return sc;
 }
 
@@ -202,7 +193,6 @@ int main(int argc, char** argv) {
         fpsLimit = std::atoi(argv[1]);
         if (fpsLimit < 0) fpsLimit = 0;
     }
-    std::cerr << "FPS limit: " << (fpsLimit > 0 ? std::to_string(fpsLimit) : "uncapped") << std::endl;
 
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -467,33 +457,15 @@ int main(int argc, char** argv) {
         auto now = std::chrono::steady_clock::now();
 
         if (movedRight) {
-            if (!currentWhite) {
-                currentWhite = true;
-                auto us = std::chrono::duration_cast<std::chrono::microseconds>(
-                    std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-                std::cerr << "WHITE " << us << std::endl;
-            }
+            currentWhite = true;
         }
         if (movedLeft) {
-            if (currentWhite) {
-                currentWhite = false;
-                auto us = std::chrono::duration_cast<std::chrono::microseconds>(
-                    std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-                std::cerr << "BLACK " << us << std::endl;
-            }
+            currentWhite = false;
         }
 
         fpsFrames++;
         if (now - fpsStart >= std::chrono::seconds(1)) {
-            std::cerr << "FPS: " << fpsFrames << " white=" << currentWhite
-                      << " acquire=" << lastAcquire << " present=" << lastPresent
-                      << " presented=" << presentedCount << " acqFails=" << acquireFailCount
-                      << " recreates=" << recreateCount
-                      << " pos=" << curX << "," << curY << std::endl;
             fpsFrames = 0;
-            presentedCount = 0;
-            acquireFailCount = 0;
-            recreateCount = 0;
             fpsStart = now;
         }
 
@@ -509,7 +481,6 @@ int main(int argc, char** argv) {
 
         VkResult waitResult = vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, 1000000000);
         if (waitResult == VK_TIMEOUT) {
-            std::cerr << "WARNING: vkWaitForFences timed out" << std::endl;
             continue;
         }
 
@@ -614,7 +585,6 @@ int main(int argc, char** argv) {
         submitInfo.pSignalSemaphores = &renderFinishedSemaphore;
         VkResult submitResult = vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence);
         if (submitResult != VK_SUCCESS) {
-            std::cerr << "WARNING: vkQueueSubmit returned " << submitResult << std::endl;
             continue;
         }
 
@@ -635,7 +605,7 @@ int main(int argc, char** argv) {
         if (presentResult == VK_ERROR_OUT_OF_DATE_KHR) {
             // Will recreate on next acquire
         } else if (presentResult != VK_SUCCESS && presentResult != VK_SUBOPTIMAL_KHR) {
-            std::cerr << "WARNING: vkQueuePresentKHR returned " << presentResult << std::endl;
+            // Present failed silently
         }
 
         frameStart = std::chrono::steady_clock::now();
