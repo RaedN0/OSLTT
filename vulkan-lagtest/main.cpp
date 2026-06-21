@@ -466,7 +466,7 @@ int main(int argc, char** argv) {
         auto now = std::chrono::steady_clock::now();
 
         if (moved) {
-            holdUntil = now + std::chrono::milliseconds(200);
+            holdUntil = now + std::chrono::microseconds(2000);
         }
         bool shouldBeWhite = (now < holdUntil);
 
