@@ -53,6 +53,7 @@ int main() {
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetCursorPosCallback(window, cursorPosCallback);
     glfwSetKeyCallback(window, keyCallback);
+    glfwShowWindow(window);
 
     // Vulkan
     VkApplicationInfo appInfo{};
@@ -207,6 +208,16 @@ int main() {
         std::cerr << "Failed to create swapchain: " << result << std::endl;
         return 1;
     }
+
+    std::cerr << "=== SWAPCHAIN ===" << std::endl;
+    std::cerr << "extent=" << extent.width << "x" << extent.height << std::endl;
+    std::cerr << "format=" << surfaceFormat.format << " colorSpace=" << surfaceFormat.colorSpace << std::endl;
+    std::cerr << "presentMode=" << presentMode << " (2=FIFO, 1=MAILBOX, 0=IMMEDIATE)" << std::endl;
+    std::cerr << "compositeAlpha=" << compositeAlpha << " minImageCount=" << minImageCount << std::endl;
+    std::cerr << "presentModes available:";
+    for (auto& pm : presentModes) std::cerr << " " << pm;
+    std::cerr << std::endl;
+    std::cerr << "=================" << std::endl;
 
     uint32_t imageCount;
     vkGetSwapchainImagesKHR(device, swapchain, &imageCount, nullptr);
@@ -407,6 +418,10 @@ int main() {
     auto fpsStart = std::chrono::steady_clock::now();
     int fpsFrames = 0;
     uint64_t totalFrames = 0;
+    VkResult lastAcquire = VK_SUCCESS;
+    VkResult lastPresent = VK_SUCCESS;
+    int presentedCount = 0;
+    int acquireFailCount = 0;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -437,9 +452,13 @@ int main() {
         fpsFrames++;
         totalFrames++;
         if (now - fpsStart >= std::chrono::seconds(1)) {
-            std::cerr << "FPS: " << fpsFrames << " currentWhite=" << currentWhite
+            std::cerr << "FPS: " << fpsFrames << " white=" << currentWhite
+                      << " acquire=" << lastAcquire << " present=" << lastPresent
+                      << " presented=" << presentedCount << " acqFails=" << acquireFailCount
                       << " pos=" << curX << "," << curY << std::endl;
             fpsFrames = 0;
+            presentedCount = 0;
+            acquireFailCount = 0;
             fpsStart = now;
         }
 
@@ -451,9 +470,9 @@ int main() {
 
         uint32_t imageIndex;
         VkResult acquireResult = vkAcquireNextImageKHR(device, swapchain, 1000000000, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+        lastAcquire = acquireResult;
         if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR) {
-            // Acquire failed — DON'T reset fence, leave it signaled so next wait succeeds immediately
-            // Poll events to let compositor configure the surface
+            acquireFailCount++;
             glfwPollEvents();
             continue;
         }
@@ -514,7 +533,10 @@ int main() {
         presentInfo.pSwapchains = &swapchain;
         presentInfo.pImageIndices = &imageIndex;
         VkResult presentResult = vkQueuePresentKHR(graphicsQueue, &presentInfo);
-        if (presentResult != VK_SUCCESS && presentResult != VK_SUBOPTIMAL_KHR) {
+        lastPresent = presentResult;
+        if (presentResult == VK_SUCCESS || presentResult == VK_SUBOPTIMAL_KHR) {
+            presentedCount++;
+        } else {
             std::cerr << "WARNING: vkQueuePresentKHR returned " << presentResult << std::endl;
         }
     }
