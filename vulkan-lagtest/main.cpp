@@ -411,9 +411,7 @@ int main() {
     VkPipeline pipeline;
     vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeCi, nullptr, &pipeline);
 
-    vkDestroyShaderModule(device, fragModule, nullptr);
-    vkDestroyShaderModule(device, vertModule, nullptr);
-
+    // NOTE: shader modules kept alive — needed if pipeline is recreated on format change
     // Sync objects
     VkSemaphoreCreateInfo semCi{};
     VkFenceCreateInfo fenceCi{};
@@ -622,6 +620,8 @@ int main() {
     vkDestroyPipeline(device, pipeline, nullptr);
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyRenderPass(device, renderPass, nullptr);
+    vkDestroyShaderModule(device, fragModule, nullptr);
+    vkDestroyShaderModule(device, vertModule, nullptr);
     vkDestroyDevice(device, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
