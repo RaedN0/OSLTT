@@ -467,7 +467,6 @@ int main(int argc, char** argv) {
         auto now = std::chrono::steady_clock::now();
 
         if (movedRight) {
-            holdUntil = now + std::chrono::microseconds(2000);
             if (!currentWhite) {
                 currentWhite = true;
                 auto us = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -476,21 +475,12 @@ int main(int argc, char** argv) {
             }
         }
         if (movedLeft) {
-            holdUntil = now;  // expire immediately
             if (currentWhite) {
                 currentWhite = false;
                 auto us = std::chrono::duration_cast<std::chrono::microseconds>(
                     std::chrono::high_resolution_clock::now().time_since_epoch()).count();
                 std::cerr << "BLACK " << us << std::endl;
             }
-        }
-
-        // Auto-revert to black after hold expires
-        if (currentWhite && now >= holdUntil) {
-            currentWhite = false;
-            auto us = std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-            std::cerr << "BLACK " << us << std::endl;
         }
 
         fpsFrames++;
