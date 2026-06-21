@@ -74,23 +74,26 @@ def compute_stats(latencies_ms):
 
 # ─── System Config ────────────────────────────────────────────────────────────
 
-def apply_scheduler(scheduler_cmd, dry_run=False):
-    """Swap scx scheduler. 'none' = scx stop (back to kernel CFS/EEVDF).
+def apply_scheduler(scheduler, mode="auto", args="", dry_run=False):
+    """Switch scx scheduler via scxctl (scx_loader DBus service).
     
-    scheduler_cmd is the full command with args, e.g.:
-      'scx_lavd --performance'
-      'scx_bpfland --primary-domain performance'
-      'none' (stops scx, reverts to kernel scheduler)
+    scheduler: scheduler name without scx_ prefix (e.g. 'lavd', 'bpfland')
+               'none' = stop scx, revert to kernel scheduler
+    mode: one of auto, gaming, lowlatency, powersave, server
+    args: extra CLI args for the scheduler binary (comma-separated)
     """
     if dry_run:
-        print(f"  [dry-run] scheduler: {scheduler_cmd}")
+        print(f"  [dry-run] scheduler: {scheduler} mode={mode} args={args or '(none)'}")
         return
 
-    # Stop any running scx scheduler
-    run_cmd("sudo scx stop 2>/dev/null; true", check=False)
+    if scheduler == "none":
+        run_cmd("scxctl stop", check=False)
+        return
 
-    if scheduler_cmd and scheduler_cmd != "none":
-        run_cmd(f"sudo {scheduler_cmd}", check=True)
+    cmd = f"scxctl switch -s {scheduler} -m {mode}"
+    if args:
+        cmd += f' -a="{args}"'
+    run_cmd(cmd, check=True)
 
 
 def apply_governor(governor, dry_run=False):
@@ -260,7 +263,9 @@ def main():
 
     for run in config["runs"]:
         run_name = run["name"]
-        scheduler_cmd = run.get("scheduler", "none")
+        scheduler = run.get("scheduler", "none")
+        sched_mode = run.get("mode", "auto")
+        sched_args = run.get("args", "")
         governor = run.get("governor", "")
         pre_run = run.get("pre_run", [])
         post_run = run.get("post_run", [])
@@ -273,13 +278,13 @@ def main():
 
             print(f"\n{'─' * 60}")
             print(f"Run: {run_name} (repeat {rep}/{repeats})")
-            print(f"  Scheduler: {scheduler_cmd}")
+            print(f"  Scheduler: {scheduler} (mode={sched_mode}, args={sched_args or '(none)'})")
             print(f"  Governor:  {governor or '(unchanged)'}")
             print(f"{'─' * 60}")
 
             # 1. Apply system configuration
             print("\n[1] Applying system configuration...")
-            apply_scheduler(scheduler_cmd, dry_run)
+            apply_scheduler(scheduler, sched_mode, sched_args, dry_run)
             apply_governor(governor, dry_run)
             run_extra_commands(pre_run, "pre_run", dry_run)
 
@@ -324,7 +329,9 @@ def main():
 
             result_entry = {
                 "run_name": run_name,
-                "scheduler": scheduler_cmd,
+                "scheduler": scheduler,
+                "mode": sched_mode,
+                "args": sched_args,
                 "governor": governor,
                 "repeat": rep,
                 "timestamp": datetime.now().isoformat(),
@@ -386,14 +393,15 @@ def _save_results(results, results_dir, timestamp):
     with open(csv_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([
-            "run", "scheduler", "governor", "repeat", "shots", "timeouts",
+            "run", "scheduler", "mode", "args", "governor", "repeat", "shots", "timeouts",
             "avg_ms", "median_ms", "min_ms", "max_ms", "range_ms",
             "sd_ms", "p90_ms", "p95_ms", "p99_ms",
         ])
         for r in results:
             s = r["stats"]
             writer.writerow([
-                r["run_name"], r["scheduler"], r["governor"], r["repeat"],
+                r["run_name"], r["scheduler"], r.get("mode", ""), r.get("args", ""),
+                r["governor"], r["repeat"],
                 len(r["latencies_ms"]), r["timeouts"],
                 f"{s['avg']:.3f}", f"{s['median']:.3f}",
                 f"{s['min']:.3f}", f"{s['max']:.3f}", f"{s['range']:.3f}",

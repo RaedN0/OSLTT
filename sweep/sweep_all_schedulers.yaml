@@ -1,27 +1,17 @@
 # OSLTT Sweep Configuration — All CachyOS scx schedulers
-# Tests every scx scheduler shipped in CachyOS with low-latency/performance
-# modes where available.
+# Tests every scx scheduler shipped in CachyOS with lowlatency mode where available.
 #
-# Schedulers in scx-scheds package:
-#   scx_bpfland, scx_flash, scx_lavd, scx_layered, scx_nest,
-#   scx_rusty, scx_simple, scx_qmap, scx_central, scx_userland,
-#   scx_rlfifo, scx_rustland, scx_beerland
+# scxctl modes: auto, gaming, lowlatency, powersave, server
 #
 # Usage:
 #   python3 sweep_runner.py sweep_all_schedulers.yaml
 #   python3 sweep_runner.py sweep_all_schedulers.yaml --dry-run
 #   python3 sweep_runner.py sweep_all_schedulers.yaml --resume
 
-# Which game profile to use (from profiles/<name>.yaml)
 game: kovaaks
-
-# OSLTT serial device
 device: /dev/ttyACM0
-
-# How many times to repeat each run (for averaging + statistical significance)
 repeats: 3
 
-# OSLTT measurement settings
 osltt:
   shots: 100
   delay_ms: 10
@@ -30,75 +20,111 @@ osltt:
   threshold: 0        # 0 = auto (fixed 200 ADC units offset)
 
 # ─── Runs ─────────────────────────────────────────────────────────────────────
-# `scheduler` is the full command with args, run as: sudo <scheduler>
-# Use 'none' to stop scx and revert to the kernel's built-in scheduler (EEVDF).
-# All runs use performance governor to isolate scheduler differences.
+# Fields:
+#   name:       Label for the run
+#   scheduler:  Scheduler name without scx_ prefix (lavd, bpfland, rusty, etc.)
+#               'none' = stop scx, revert to kernel EEVDF
+#   mode:       scxctl mode (auto, gaming, lowlatency, powersave, server)
+#   args:       Extra CLI args for the scheduler binary (comma-separated, optional)
+#   governor:   CPU governor (performance, powersave, etc.)
 
 runs:
   # ── Baseline: kernel EEVDF (no scx) ──
-  - name: eevdf_default
+  - name: eevdf_performance
     scheduler: none
     governor: performance
 
-  # ── scx_lavd ──
-  - name: scx_lavd_autopilot
-    scheduler: scx_lavd --autopilot
-    governor: performance
-
-  - name: scx_lavd_performance
-    scheduler: scx_lavd --performance
-    governor: performance
-
-  - name: scx_lavd_balanced
-    scheduler: scx_lavd --balanced
-    governor: performance
-
-  # ── scx_bpfland ──
-  - name: scx_bpfland_default
-    scheduler: scx_bpfland
-    governor: performance
-
-  - name: scx_bpfland_performance
-    scheduler: scx_bpfland --primary-domain performance
-    governor: performance
-
-  - name: scx_bpfland_all
-    scheduler: scx_bpfland --primary-domain all --cpufreq
-    governor: performance
-
-  # ── scx_rusty ──
-  - name: scx_rusty_default
-    scheduler: scx_rusty
-    governor: performance
-
-  # ── scx_flash ──
-  - name: scx_flash_default
-    scheduler: scx_flash
-    governor: performance
-
-  # ── scx_beerland ──
-  - name: scx_beerland_default
-    scheduler: scx_beerland
-    governor: performance
-
-  # ── Other schedulers (less relevant for gaming but included for completeness) ──
-  - name: scx_layered_default
-    scheduler: scx_layered
-    governor: performance
-
-  - name: scx_nest_default
-    scheduler: scx_nest
-    governor: performance
-
-  - name: scx_simple_default
-    scheduler: scx_simple
-    governor: performance
-
-  - name: scx_qmap_default
-    scheduler: scx_qmap
-    governor: performance
-
-  # ── EEVDF baseline (powersave governor for comparison) ──
   - name: eevdf_powersave
     scheduler: none
     governor: powersave
+
+  # ── scx_lavd ──
+  - name: lavd_auto
+    scheduler: lavd
+    mode: auto
+    governor: performance
+
+  - name: lavd_gaming
+    scheduler: lavd
+    mode: gaming
+    governor: performance
+
+  - name: lavd_lowlatency
+    scheduler: lavd
+    mode: lowlatency
+    governor: performance
+
+  # ── scx_bpfland ──
+  - name: bpfland_auto
+    scheduler: bpfland
+    mode: auto
+    governor: performance
+
+  - name: bpfland_gaming
+    scheduler: bpfland
+    mode: gaming
+    governor: performance
+
+  - name: bpfland_lowlatency
+    scheduler: bpfland
+    mode: lowlatency
+    governor: performance
+
+  # ── scx_rusty ──
+  - name: rusty_auto
+    scheduler: rusty
+    mode: auto
+    governor: performance
+
+  - name: rusty_gaming
+    scheduler: rusty
+    mode: gaming
+    governor: performance
+
+  - name: rusty_lowlatency
+    scheduler: rusty
+    mode: lowlatency
+    governor: performance
+
+  # ── scx_flash ──
+  - name: flash_auto
+    scheduler: flash
+    mode: auto
+    governor: performance
+
+  - name: flash_lowlatency
+    scheduler: flash
+    mode: lowlatency
+    governor: performance
+
+  # ── scx_beerland ──
+  - name: beerland_auto
+    scheduler: beerland
+    mode: auto
+    governor: performance
+
+  - name: beerland_lowlatency
+    scheduler: beerland
+    mode: lowlatency
+    governor: performance
+
+  # ── Other schedulers (auto mode only) ──
+  - name: layered_auto
+    scheduler: layered
+    mode: auto
+    governor: performance
+
+  - name: nest_auto
+    scheduler: nest
+    mode: auto
+    governor: performance
+
+  - name: simple_auto
+    scheduler: simple
+    mode: auto
+    governor: performance
+
+  - name: qmap_auto
+    scheduler: qmap
+    mode: auto
+    governor: performance

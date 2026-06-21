@@ -1,62 +1,57 @@
-# OSLTT Sweep Configuration
-# Defines what system configurations to test and OSLTT measurement settings.
+# OSLTT Sweep Configuration — default template
+# scxctl modes: auto, gaming, lowlatency, powersave, server
 
-# Which game profile to use (from profiles/<name>.yaml)
 game: kovaaks
-
-# OSLTT serial device
 device: /dev/ttyACM0
-
-# How many times to repeat each run (for averaging)
 repeats: 3
 
-# OSLTT measurement settings
 osltt:
-  shots: 100          # number of shots per run
-  delay_ms: 10        # delay between shots
-  move_px: 100        # mouse movement distance (pixels)
-  window_ms: 20       # sampling window (ms)
-  threshold: 0        # 0 = auto-detect
+  shots: 100
+  delay_ms: 10
+  move_px: 100
+  window_ms: 20
+  threshold: 0        # 0 = auto
 
-# ─── Runs ─────────────────────────────────────────────────────────────────────
-# Each run applies a system configuration, launches the game, runs the test,
-# and saves results. `scheduler` uses scx (hot-swappable, no reboot needed).
-#
-# Fields:
-#   name:        Label for the run (used in results)
-#   scheduler:   scx scheduler name (lavd, bpfland, rusty, etc.) or "none" for CFS/EEVDF
-#   governor:   CPU governor (performance, powersave, schedutil, etc.) — optional
-#   pre_run:    List of shell commands to run BEFORE game launch (optional)
-#   post_run:   List of shell commands to run AFTER game cleanup (optional)
+# Fields per run:
+#   name:       Label
+#   scheduler:  Name without scx_ prefix (lavd, bpfland, rusty, etc.)
+#               'none' = stop scx, revert to kernel EEVDF
+#   mode:       scxctl mode (auto, gaming, lowlatency, powersave, server)
+#   args:       Extra CLI args (comma-separated, optional)
+#   governor:   CPU governor (optional)
 
 runs:
-  - name: scx_lavd
+  - name: eevdf_default
+    scheduler: none
+    governor: performance
+
+  - name: lavd_lowlatency
     scheduler: lavd
+    mode: lowlatency
     governor: performance
 
-  - name: scx_bpfland
+  - name: bpfland_gaming
     scheduler: bpfland
+    mode: gaming
     governor: performance
 
-  - name: scx_rusty
+  - name: bpfland_lowlatency
+    scheduler: bpfland
+    mode: lowlatency
+    governor: performance
+
+  - name: rusty_lowlatency
     scheduler: rusty
+    mode: lowlatency
     governor: performance
 
-  - name: cfs_powersave
+  - name: eevdf_powersave
     scheduler: none
     governor: powersave
 
-  - name: cfs_performance
-    scheduler: none
-    governor: performance
-
-# Example with extra commands:
-#   - name: scx_lavd_smt_off
+# Example with extra args:
+#   - name: lavd_performance_custom
 #     scheduler: lavd
+#     mode: auto
+#     args: "--performance"
 #     governor: performance
-#     pre_run:
-#       - "echo 0 | sudo tee /sys/devices/system/cpu/cpu1/online"
-#       - "echo 0 | sudo tee /sys/devices/system/cpu/cpu3/online"
-#     post_run:
-#       - "echo 1 | sudo tee /sys/devices/system/cpu/cpu1/online"
-#       - "echo 1 | sudo tee /sys/devices/system/cpu/cpu3/online"
