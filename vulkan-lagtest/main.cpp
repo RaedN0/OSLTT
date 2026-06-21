@@ -459,22 +459,38 @@ int main(int argc, char** argv) {
 
         double curX, curY;
         glfwGetCursorPos(window, &curX, &curY);
-        bool moved = (curX != prevX || curY != prevY);
+        bool movedRight = (curX > prevX);
+        bool movedLeft = (curX < prevX);
         prevX = curX;
         prevY = curY;
 
         auto now = std::chrono::steady_clock::now();
 
-        if (moved) {
+        if (movedRight) {
             holdUntil = now + std::chrono::microseconds(2000);
+            if (!currentWhite) {
+                currentWhite = true;
+                auto us = std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+                std::cerr << "WHITE " << us << std::endl;
+            }
         }
-        bool shouldBeWhite = (now < holdUntil);
+        if (movedLeft) {
+            holdUntil = now;  // expire immediately
+            if (currentWhite) {
+                currentWhite = false;
+                auto us = std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+                std::cerr << "BLACK " << us << std::endl;
+            }
+        }
 
-        if (shouldBeWhite != currentWhite) {
-            currentWhite = shouldBeWhite;
+        // Auto-revert to black after hold expires
+        if (currentWhite && now >= holdUntil) {
+            currentWhite = false;
             auto us = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-            std::cerr << (currentWhite ? "WHITE" : "BLACK") << " " << us << std::endl;
+            std::cerr << "BLACK " << us << std::endl;
         }
 
         fpsFrames++;
