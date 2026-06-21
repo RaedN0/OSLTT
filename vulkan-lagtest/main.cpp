@@ -437,7 +437,7 @@ int main() {
             currentWhite = shouldBeWhite;
             auto now = std::chrono::high_resolution_clock::now();
             auto us = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
-            std::cout << (currentWhite ? "WHITE" : "BLACK") << " " << us << std::endl;
+            std::cerr << (currentWhite ? "WHITE" : "BLACK") << " " << us << " holdFrames=" << holdFrames << std::endl;
         }
 
         VkResult waitResult = vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, 1000000000);
@@ -475,6 +475,11 @@ int main() {
         vkCmdBindPipeline(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
         float color[4] = {currentWhite ? 1.0f : 0.0f, currentWhite ? 1.0f : 0.0f, currentWhite ? 1.0f : 0.0f, 1.0f};
+        static int colorDebugFrame = 0;
+        if (colorDebugFrame++ % 500000 == 0) {
+            std::cerr << "render color=[" << color[0] << "," << color[1] << "," << color[2] << "," << color[3]
+                      << "] currentWhite=" << currentWhite << " holdFrames=" << holdFrames << std::endl;
+        }
         vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(color), color);
         vkCmdDraw(commandBuffers[imageIndex], 3, 1, 0, 0);
 
