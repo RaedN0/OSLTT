@@ -415,9 +415,9 @@ int main() {
         prevX = curX;
         prevY = curY;
 
-        bool inputActive = moved || g_buttonPressed || g_keyPressed || g_mouseMoved;
-        if (inputActive) {
-            holdFrames = 60;  // Hold white for 60 frames after last input
+        // Only use actual position change, not callbacks (callbacks fire every frame on Wayland)
+        if (moved) {
+            holdFrames = 500000;  // Large number because loop runs at millions of FPS
         }
         bool shouldBeWhite = holdFrames > 0;
         if (holdFrames > 0) holdFrames--;
