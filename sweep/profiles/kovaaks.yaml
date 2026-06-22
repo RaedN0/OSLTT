@@ -20,4 +20,4 @@ setup:
     delay_after: 1
 
 # Command to close the game when the measurement is done
-cleanup: "pkill -f KovaaKs"
+cleanup: "pkill -f FPSAimTrainer"
