@@ -34,15 +34,16 @@ class OSLTT:
             raise RuntimeError("OSLTT did not acknowledge config")
         return True
 
-    def run_test(self, on_result=None):
+    def run_test(self, on_result=None, timeout=120):
         """Run full test. Calls on_result(latency_us) per shot.
 
         Returns list of latencies in microseconds (None for timeouts).
         """
         self.ser.write(b"T\n")
         results = []
+        deadline = time.time() + timeout
 
-        while True:
+        while time.time() < deadline:
             raw = self.ser.readline()
             line = raw.decode(errors="replace").strip()
             if not line:

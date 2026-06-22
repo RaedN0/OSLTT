@@ -35,13 +35,20 @@ from osltt import OSLTT
 def run_cmd(cmd, check=False):
     """Run a shell command, return CompletedProcess."""
     print(f"  $ {cmd}")
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
     if check and result.returncode != 0:
         raise RuntimeError(
             f"Command failed (exit {result.returncode}): {cmd}\n"
             f"stderr: {result.stderr.strip()}"
         )
     return result
+
+
+def run_cmd_background(cmd):
+    """Launch a command in the background (don't wait for it to finish)."""
+    print(f"  $ {cmd} &")
+    subprocess.Popen(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
 
 
 def compute_stats(latencies_ms):
@@ -127,7 +134,7 @@ def launch_game(profile, dry_run=False):
         print(f"  [dry-run] launch: {launch_cmd}")
         return
 
-    run_cmd(launch_cmd)
+    run_cmd_background(launch_cmd)
     wait = profile.get("wait", 10)
     print(f"  Waiting {wait}s for game to start...")
     time.sleep(wait)
