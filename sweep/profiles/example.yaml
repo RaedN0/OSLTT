@@ -24,4 +24,4 @@ setup:
     delay_after: 1
 
 # Command to close the game
-cleanup: "steam -shutdown"
+cleanup: "steam steam://stop/123456"
