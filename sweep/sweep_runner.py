@@ -82,7 +82,7 @@ def compute_stats(latencies_ms):
 # ─── System Config ────────────────────────────────────────────────────────────
 
 def apply_scheduler(scheduler, mode="auto", args="", dry_run=False):
-    """Switch scx scheduler via scxctl (scx_loader DBus service).
+    """Start/switch scx scheduler via scxctl (scx_loader DBus service).
     
     scheduler: scheduler name without scx_ prefix (e.g. 'lavd', 'bpfland')
                'none' = stop scx, revert to kernel scheduler
@@ -97,10 +97,17 @@ def apply_scheduler(scheduler, mode="auto", args="", dry_run=False):
         run_cmd("scxctl stop", check=False)
         return
 
-    cmd = f"scxctl switch -s {scheduler} -m {mode}"
+    cmd = f"scxctl start -s {scheduler} -m {mode}"
     if args:
         cmd += f' -a="{args}"'
-    run_cmd(cmd, check=True)
+    # Try 'start' first (works when no scheduler is running).
+    # Fall back to 'switch' if one is already running.
+    result = run_cmd(cmd, check=False)
+    if result.returncode != 0:
+        cmd = f"scxctl switch -s {scheduler} -m {mode}"
+        if args:
+            cmd += f' -a="{args}"'
+        run_cmd(cmd, check=True)
 
 
 def apply_governor(governor, dry_run=False):
