@@ -46,7 +46,7 @@ case "${BOARD_TYPE:-}" in
     ;;
   feather)
     FQBN="adafruit:samd:adafruit_feather_m0"
-    BOARD_URL="https://adafruit.github.io/arduino-board-package/package_adafruit_index.json"
+    BOARD_URL="https://adafruit.github.io/arduino-board-index/package_adafruit_index.json"
     BOARD_NAME="Adafruit Feather M0"
     ;;
   *)
@@ -157,6 +157,15 @@ arduino-cli compile --fqbn "$FQBN" $ARDUINO_FLAGS .
 
 # 6. Upload
 step "Flashing firmware to $PORT..."
+
+# XIAO requires double-press reset to enter bootloader mode before upload
+if [ "$BOARD_TYPE" = "xiao" ]; then
+  echo -e "${Y}[WARN]${N} XIAO MUST be in bootloader mode."
+  echo "  Please DOUBLE-PRESS the reset button (two quick presses),"
+  echo "  then press ENTER to continue..."
+  read -r
+fi
+
 arduino-cli upload -p "$PORT" --fqbn "$FQBN" $ARDUINO_FLAGS .
 
 info "Flash complete. Board is resetting..."
