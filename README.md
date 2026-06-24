@@ -4,13 +4,6 @@ A hardware-assisted tool for measuring input and display latency with microsecon
 
 **Original Project:** https://github.com/OSRTT/OSLTT
 
-## Features
-- **Hardware-level measurement:** Uses a photodiode to detect screen changes, providing true end-to-end latency measurements.
-- **Real USB HID Mouse:** The microcontroller acts as a physical mouse, bypassing most anti-cheat software and Raw Input filters in games.
-- **Automated Benchmarking:** Includes a Python sweep runner to automatically test latency across different system configurations (e.g., kernel schedulers, CPU governors).
-- **Web Interface:** Simple local web UI for configuring shots, thresholds, and viewing results.
-- **Vulkan Lag Test:** A minimal Vulkan-based fullscreen toggle application for standardized input/display lag testing.
-
 ## Hardware Requirements
 - **Microcontroller:** Seeed Studio XIAO SAMD21 or Adafruit Feather M0
 - **Photodiode:** Fast response photodiode (e.g., BPW34)
@@ -19,7 +12,7 @@ A hardware-assisted tool for measuring input and display latency with microsecon
 - **Misc:** Breadboard, jumper wires, resistors
 
 ## Repository Structure
-- **`Hardware/`** – Arduino firmware. Handles HID mouse emulation, photodiode sampling, and microsecond timestamping.
+- **`Hardware/`** – Arduino firmware and flash script. Handles HID mouse emulation, photodiode sampling, and microsecond timestamping.
 - **`webapp/`** – Local web server (Flask + pyserial) and frontend for controlling the device.
 - **`vulkan-lagtest/`** – Minimal Vulkan input lag test (fullscreen black/white toggle based on mouse movement).
 - **`sweep/`** – Automated benchmarking suite for testing latency under different `scx` schedulers and CPU configurations.
@@ -27,11 +20,16 @@ A hardware-assisted tool for measuring input and display latency with microsecon
 ## Quick Start
 
 ### 1. Flash the Firmware
-1. Install the [Arduino IDE](https://www.arduino.cc/en/software).
-2. Install the SAMD board packages via the Board Manager.
-3. Open `Hardware/OSLTT/OSLTT.ino`.
-4. Select your board (e.g., `Seeed XIAO SAMD21`) and port.
-5. Upload the firmware.
+Use the included flash script:
+```bash
+cd Hardware/OSLTT
+./flash_firmware.sh xiao /dev/ttyACM0
+```
+Supported boards:
+- `xiao` — Seeed XIAO M0
+- `feather` — Adafruit Feather M0
+
+If the port is omitted, the script auto-detects the device.
 
 ### 2. Run the Web App
 ```bash
