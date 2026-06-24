@@ -4,13 +4,6 @@ A hardware-assisted tool for measuring input and display latency with microsecon
 
 **Original Project:** https://github.com/OSRTT/OSLTT
 
-## Hardware Requirements
-- **Microcontroller:** Seeed Studio XIAO SAMD21 or Adafruit Feather M0
-- **Photodiode:** Fast response photodiode (e.g., BPW34)
-- **Transistor:** NPN (e.g., BC547)
-- **OLED Display:** 0.96" I2C OLED (SSD1306)
-- **Misc:** Breadboard, jumper wires, resistors
-
 ## Repository Structure
 - **`Hardware/`** – Arduino firmware and flash script. Handles HID mouse emulation, photodiode sampling, and microsecond timestamping.
 - **`webapp/`** – Local web server (Flask + pyserial) and frontend for controlling the device.
