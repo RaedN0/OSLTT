@@ -157,15 +157,6 @@ arduino-cli compile --fqbn "$FQBN" $ARDUINO_FLAGS .
 
 # 6. Upload
 step "Flashing firmware to $PORT..."
-
-# XIAO requires double-press reset to enter bootloader mode before upload
-if [ "$BOARD_TYPE" = "xiao" ]; then
-  echo -e "${Y}[WARN]${N} XIAO MUST be in bootloader mode."
-  echo "  Please DOUBLE-PRESS the reset button (two quick presses),"
-  echo "  then press ENTER to continue..."
-  read -r
-fi
-
 arduino-cli upload -p "$PORT" --fqbn "$FQBN" $ARDUINO_FLAGS .
 
 info "Flash complete. Board is resetting..."
